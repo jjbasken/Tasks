@@ -47,6 +47,8 @@ export function LoginPage() {
         </form>
         <div className="auth-link-row">
           <Link to="/register">Create an account</Link>
+          {' · '}
+          <Link to="/device-request">Add this device</Link>
         </div>
         <div className="encrypt-badge">
           <div className="encrypt-dot" />

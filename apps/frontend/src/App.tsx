@@ -12,6 +12,7 @@ import { TasksPage } from './routes/TasksPage.js'
 import { ListsPage } from './routes/ListsPage.js'
 import { DevicesPage } from './routes/DevicesPage.js'
 import { SettingsPage } from './routes/SettingsPage.js'
+import { RequestDevicePage } from './routes/RequestDevicePage.js'
 
 export function App() {
   const [trpcClient] = useState(() => createTrpcClient(() => session.getToken()))
@@ -23,6 +24,7 @@ export function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/device-request" element={<RequestDevicePage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/lists" element={<ListsPage />} />
