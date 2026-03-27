@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 
 RUN npm install -g pnpm
