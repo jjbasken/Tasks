@@ -37,7 +37,7 @@ export function ListsPage() {
       const invitee = await trpc.users.search.fetch({ username: inviteUsername })
       if (!invitee) { setError('User not found'); return }
       const sealedKey = sealToPublicKey(fromBase64(listKeyB64), invitee.publicKey)
-      await inviteMutation.mutateAsync({ listId: inviteListId, inviteeUsername, encryptedListKey: sealedKey })
+      await inviteMutation.mutateAsync({ listId: inviteListId, inviteeUsername: inviteUsername, encryptedListKey: sealedKey })
       setInviteUsername('')
       setInviteListId(null)
     } catch (err: any) {

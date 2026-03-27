@@ -13,7 +13,7 @@ COPY packages/shared/ ./packages/shared/
 COPY tsconfig.base.json ./
 
 WORKDIR /app/apps/frontend
-RUN pnpm run build
+RUN pnpm exec vite build
 
 FROM nginx:alpine AS runner
 COPY --from=builder /app/apps/frontend/dist /usr/share/nginx/html

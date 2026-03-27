@@ -1,12 +1,11 @@
-import type { TaskPayload } from '@tasks/shared'
+import type { DecryptedTask } from '../hooks/useTasks.js'
 import { TaskRow } from './TaskRow.js'
 
-type Task = TaskPayload & { id: string }
 type Props = {
-  tasks: Task[]
+  tasks: DecryptedTask[]
   bucket: 'now' | 'later' | 'done'
-  onToggle: (task: Task) => void
-  onClickTask: (task: Task) => void
+  onToggle: (task: DecryptedTask) => void
+  onClickTask: (task: DecryptedTask) => void
 }
 
 export function TaskList({ tasks, bucket, onToggle, onClickTask }: Props) {
