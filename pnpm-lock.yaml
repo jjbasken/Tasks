@@ -81,9 +81,6 @@ importers:
 
   packages/shared:
     dependencies:
-      libsodium-wrappers:
-        specifier: ^0.7.15
-        version: 0.7.16
       libsodium-wrappers-sumo:
         specifier: ^0.8.2
         version: 0.8.2
@@ -1017,12 +1014,6 @@ packages:
   libsodium-wrappers-sumo@0.8.2:
     resolution: {integrity: sha512-wd1xAY++Kr6VMikSaa4EPRAHJmFvNlGWiiwU3Jh3GR1zRYF3/I3vy/wYsr4k3LVsNzwb9sqfEQ4LdVQ6zEebyQ==}
 
-  libsodium-wrappers@0.7.16:
-    resolution: {integrity: sha512-Gtr/WBx4dKjvRL1pvfwZqu7gO6AfrQ0u9vFL+kXihtHf6NfkROR8pjYWn98MFDI3jN19Ii1ZUfPR9afGiPyfHg==}
-
-  libsodium@0.7.16:
-    resolution: {integrity: sha512-3HrzSPuzm6Yt9aTYCDxYEG8x8/6C0+ag655Y7rhhWZM9PT4NpdnbqlzXhGZlDnkgR6MeSTnOt/VIyHLs9aSf+Q==}
-
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
@@ -1795,12 +1786,6 @@ snapshots:
   libsodium-wrappers-sumo@0.8.2:
     dependencies:
       libsodium-sumo: 0.8.2
-
-  libsodium-wrappers@0.7.16:
-    dependencies:
-      libsodium: 0.7.16
-
-  libsodium@0.7.16: {}
 
   lru-cache@5.1.1:
     dependencies:

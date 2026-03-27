@@ -16,9 +16,9 @@ import {
 beforeAll(async () => { await initCrypto() })
 
 describe('generateKdfSalt', () => {
-  it('returns a base64 string of correct byte length (32 bytes)', () => {
+  it('returns a base64 string of correct byte length (16 bytes = crypto_pwhash_SALTBYTES)', () => {
     const salt = generateKdfSalt()
-    expect(fromBase64(salt).length).toBe(32)
+    expect(fromBase64(salt).length).toBe(16)
   })
   it('returns a different value each call', () => {
     expect(generateKdfSalt()).not.toBe(generateKdfSalt())

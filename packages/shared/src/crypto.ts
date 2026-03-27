@@ -14,9 +14,9 @@ export function fromBase64(b64: string): Uint8Array {
   return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL)
 }
 
-/** Generate a random 32-byte KDF salt, returned as base64. */
+/** Generate a random Argon2id KDF salt (16 bytes = crypto_pwhash_SALTBYTES), returned as base64. */
 export function generateKdfSalt(): string {
-  return toBase64(sodium.randombytes_buf(32))
+  return toBase64(sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES))
 }
 
 /**
@@ -25,13 +25,10 @@ export function generateKdfSalt(): string {
  */
 export async function deriveStretchKey(passphrase: string, saltB64: string): Promise<Uint8Array> {
   await sodium.ready
-  // crypto_pwhash requires exactly crypto_pwhash_SALTBYTES (16) bytes; use first 16 of our 32-byte salt
-  const fullSalt = fromBase64(saltB64)
-  const salt = fullSalt.slice(0, sodium.crypto_pwhash_SALTBYTES)
   return sodium.crypto_pwhash(
     32,
     passphrase,
-    salt,
+    fromBase64(saltB64),
     sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
     sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
     sodium.crypto_pwhash_ALG_ARGON2ID13,
