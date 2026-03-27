@@ -1,9 +1,8 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
-RUN curl -fsSL https://get.pnpm.io/install.sh | bash
-ENV PNPM_HOME="/root/.local/share/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
+RUN curl -fsSL https://github.com/pnpm/pnpm/releases/latest/download/pnpm-linux-x64 \
+    -o /usr/local/bin/pnpm && chmod +x /usr/local/bin/pnpm
 
 # Install dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
