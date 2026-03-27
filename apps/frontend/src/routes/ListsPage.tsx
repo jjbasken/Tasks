@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
 import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric } from '@tasks/shared'
@@ -6,6 +7,7 @@ import { Sidebar } from '../components/Sidebar.js'
 import { useListsList } from '../hooks/useLists.js'
 
 export function ListsPage() {
+  const navigate = useNavigate()
   const { data: lists, refetch } = useListsList()
   const createList = trpc.lists.create.useMutation({ onSuccess: () => refetch() })
   const inviteMutation = trpc.lists.invite.useMutation({ onSuccess: () => refetch() })
@@ -50,7 +52,7 @@ export function ListsPage() {
 
   return (
     <div className="app-layout">
-      <Sidebar activeListId={activeListId} onSelectList={() => {}} />
+      <Sidebar activeListId={activeListId} onSelectList={(id) => navigate(`/tasks?listId=${id}`)} />
       <div className="main-content">
         <div className="inner-page">
           <h1 className="page-title">Lists</h1>

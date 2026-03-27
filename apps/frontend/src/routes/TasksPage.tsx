@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
@@ -31,7 +32,8 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<DecryptedTask | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const { data: lists } = useListsList()
-  const [activeListId, setActiveListId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const [activeListId, setActiveListId] = useState<string | null>(() => searchParams.get('listId'))
 
   const personalList = lists?.[0] ?? null
   const currentListId = activeListId ?? personalList?.id ?? ''
