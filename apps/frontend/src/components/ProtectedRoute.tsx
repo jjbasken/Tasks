@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router'
-import { session } from '../lib/session.js'
+import { useAuth } from '../hooks/useAuth.js'
 
 export function ProtectedRoute() {
-  return session.getToken() ? <Outlet /> : <Navigate to="/login" replace />
+  const { isLoggedIn } = useAuth()
+  return isLoggedIn ? <Outlet /> : <Navigate to="/login" replace />
 }
