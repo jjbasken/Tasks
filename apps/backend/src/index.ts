@@ -17,7 +17,7 @@ app.all('/api/trpc/*', c =>
     endpoint: '/api/trpc',
     req: c.req.raw,
     router: appRouter,
-    createContext: req => createContext(req as any),
+    createContext,
   })
 )
 
