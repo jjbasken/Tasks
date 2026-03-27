@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const listKey = generateListKey()
     const encPrivKey = encryptSymmetric(privateKey, stretchKey)
     const encListKey = encryptSymmetric(listKey, stretchKey)
+    const encListName = encryptSymmetric('Personal', stretchKey)
     await utils.client.auth.register.mutate({
       username, email,
       passwordHash: passphrase,
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       kdfSalt,
       encryptedPrivateKey: JSON.stringify(encPrivKey),
       encryptedPersonalListKey: JSON.stringify(encListKey),
+      encryptedPersonalListName: JSON.stringify(encListName),
     })
     await login(username, passphrase)
   }

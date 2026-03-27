@@ -20,7 +20,7 @@ export function Sidebar({ activeListId, onSelectList }: Props) {
           onClick={() => onSelectList(list.id)}
         >
           <span className="sidebar-list-icon">{list.isShared ? '⇄' : '▪'}</span>
-          <span className="sidebar-list-name">{list.isShared ? 'shared' : 'personal'}</span>
+          <span className="sidebar-list-name">{list.name}</span>
         </button>
       ))}
       <div className="sidebar-nav">

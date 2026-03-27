@@ -3,9 +3,10 @@ import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
 import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric } from '@tasks/shared'
 import { Sidebar } from '../components/Sidebar.js'
+import { useListsList } from '../hooks/useLists.js'
 
 export function ListsPage() {
-  const { data: lists, refetch } = trpc.lists.list.useQuery()
+  const { data: lists, refetch } = useListsList()
   const createList = trpc.lists.create.useMutation({ onSuccess: () => refetch() })
   const inviteMutation = trpc.lists.invite.useMutation({ onSuccess: () => refetch() })
 
@@ -65,7 +66,7 @@ export function ListsPage() {
             {lists?.length === 0 && <div className="card-row"><span className="card-row-label" style={{ color: 'var(--text-muted)' }}>No lists yet</span></div>}
             {lists?.map(list => (
               <div key={list.id} className="card-row">
-                <span className="card-row-label">{list.isShared ? 'Shared list' : 'Personal list'}</span>
+                <span className="card-row-label">{list.name}</span>
                 <span className="card-row-meta">{list.id.slice(0, 12)}…</span>
                 {list.isShared && (
                   <button className="btn-accent-sm" onClick={() => setInviteListId(list.id)}>+ Invite</button>

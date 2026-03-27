@@ -28,6 +28,7 @@ export const authRouter = router({
       kdfSalt: z.string(),
       encryptedPrivateKey: z.string(),
       encryptedPersonalListKey: z.string(),
+      encryptedPersonalListName: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
       const existing = await ctx.db.select().from(users).where(eq(users.username, input.username))
@@ -48,7 +49,7 @@ export const authRouter = router({
       })
       // Create the user's personal list + membership so lists.list() works immediately after login
       const listId = randomUUID()
-      await ctx.db.insert(lists).values({ id: listId, ownerId: userId, encryptedName: '"Personal"', isShared: false, createdAt: now })
+      await ctx.db.insert(lists).values({ id: listId, ownerId: userId, encryptedName: input.encryptedPersonalListName, isShared: false, createdAt: now })
       await ctx.db.insert(listMemberships).values({ id: randomUUID(), listId, userId, encryptedListKey: input.encryptedPersonalListKey, invitedBy: null, createdAt: now })
       return { userId }
     }),
