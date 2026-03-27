@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stretchKey = await deriveStretchKey(passphrase, challenge.kdfSalt)
     const encPrivKey: EncryptedBlob = JSON.parse(challenge.encryptedPrivateKey)
     const privateKeyB64 = decryptSymmetric(encPrivKey, stretchKey)
-    const result = await utils.auth.login.fetch({ username, passwordHash: passphrase })
+    const result = await utils.client.auth.login.mutate({ username, passwordHash: passphrase })
     const userInfo = await utils.users.search.fetch({ username })
     session.setToken(result.token)
     session.setStretchKey(stretchKey)
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const listKey = generateListKey()
     const encPrivKey = encryptSymmetric(privateKey, stretchKey)
     const encListKey = encryptSymmetric(listKey, stretchKey)
-    await utils.auth.register.fetch({
+    await utils.client.auth.register.mutate({
       username, email,
       passwordHash: passphrase,
       publicKey,
