@@ -1,0 +1,10 @@
+{
+  "name": "tasks-monorepo",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "test": "pnpm --filter shared test && pnpm --filter backend test"
+  }
+}
