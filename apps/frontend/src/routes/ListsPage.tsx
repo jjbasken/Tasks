@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
 import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric } from '@tasks/shared'
+import { Sidebar } from '../components/Sidebar.js'
 
 export function ListsPage() {
   const { data: lists, refetch } = trpc.lists.list.useQuery()
@@ -9,6 +10,7 @@ export function ListsPage() {
   const inviteMutation = trpc.lists.invite.useMutation({ onSuccess: () => refetch() })
 
   const [newListName, setNewListName] = useState('')
+  const [activeListId] = useState<string>('')
   const [inviteListId, setInviteListId] = useState<string | null>(null)
   const [inviteUsername, setInviteUsername] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -46,35 +48,46 @@ export function ListsPage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 600 }}>
-      <h1>Lists</h1>
-      <section>
-        <h2>Create shared list</h2>
-        <form onSubmit={handleCreateList} style={{ display: 'flex', gap: 8 }}>
-          <input placeholder="List name" value={newListName} onChange={e => setNewListName(e.target.value)} required />
-          <button type="submit">Create</button>
-        </form>
-      </section>
-      <section style={{ marginTop: 32 }}>
-        <h2>Your lists</h2>
-        {lists?.map(list => (
-          <div key={list.id} style={{ padding: '10px 0', borderBottom: '1px solid #eee' }}>
-            <span>{list.isShared ? '🤝 Shared' : '📋 Personal'} — {list.id.slice(0, 12)}…</span>
-            {list.isShared && (
-              <button onClick={() => setInviteListId(list.id)} style={{ marginLeft: 12, fontSize: 12 }}>+ Invite</button>
-            )}
+    <div className="app-layout">
+      <Sidebar activeListId={activeListId} onSelectList={() => {}} />
+      <div className="main-content">
+        <div className="inner-page">
+          <h1 className="page-title">Lists</h1>
+
+          <div className="section-label">Create shared list</div>
+          <form className="inline-form" onSubmit={handleCreateList}>
+            <input className="inline-input" placeholder="List name" value={newListName} onChange={e => setNewListName(e.target.value)} required />
+            <button className="btn-secondary" type="submit">Create</button>
+          </form>
+
+          <div className="section-label">Your lists</div>
+          <div className="card">
+            {lists?.length === 0 && <div className="card-row"><span className="card-row-label" style={{ color: 'var(--text-muted)' }}>No lists yet</span></div>}
+            {lists?.map(list => (
+              <div key={list.id} className="card-row">
+                <span className="card-row-label">{list.isShared ? 'Shared list' : 'Personal list'}</span>
+                <span className="card-row-meta">{list.id.slice(0, 12)}…</span>
+                {list.isShared && (
+                  <button className="btn-accent-sm" onClick={() => setInviteListId(list.id)}>+ Invite</button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </section>
+        </div>
+      </div>
+
       {inviteListId && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <form onSubmit={handleInvite} style={{ background: '#fff', padding: 24, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 300 }}>
-            <h3>Invite to list</h3>
-            <input placeholder="Username" value={inviteUsername} onChange={e => setInviteUsername(e.target.value)} required autoFocus />
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit">Invite</button>
-              <button type="button" onClick={() => setInviteListId(null)}>Cancel</button>
+        <div className="modal-backdrop" onClick={() => setInviteListId(null)}>
+          <form className="modal-card" onSubmit={handleInvite} onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Invite to list</div>
+            <div className="form-field">
+              <label className="form-label">Username</label>
+              <input className="form-input" placeholder="Username" value={inviteUsername} onChange={e => setInviteUsername(e.target.value)} required autoFocus />
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-actions">
+              <button className="btn-primary" type="submit" style={{ marginTop: 0 }}>Invite</button>
+              <button className="btn-secondary" type="button" onClick={() => setInviteListId(null)}>Cancel</button>
             </div>
           </form>
         </div>

@@ -25,21 +25,34 @@ export function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: '80px auto', padding: 24 }}>
-      <h1>Tasks</h1>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label>Username</label>
-          <input value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-logo">
+          <div className="auth-logo-icon">⚡</div>
+          <span className="auth-logo-name">Tasks</span>
         </div>
-        <div>
-          <label>Passphrase</label>
-          <input type="password" value={passphrase} onChange={e => setPassphrase(e.target.value)} required />
+        <h1 className="auth-heading">Welcome back</h1>
+        <p className="auth-sub">Unlock your encrypted vault</p>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label">Username</label>
+            <input className="form-input" value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Passphrase</label>
+            <input className="form-input" type="password" value={passphrase} onChange={e => setPassphrase(e.target.value)} required />
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          <button className="btn-primary" type="submit" disabled={loading}>{loading ? 'Unlocking…' : 'Unlock vault'}</button>
+        </form>
+        <div className="auth-link-row">
+          <Link to="/register">Create an account</Link>
         </div>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit" disabled={loading}>{loading ? 'Unlocking…' : 'Login'}</button>
-      </form>
-      <p><Link to="/register">Create account</Link></p>
+        <div className="encrypt-badge">
+          <div className="encrypt-dot" />
+          End-to-end encrypted — keys never leave your device
+        </div>
+      </div>
     </div>
   )
 }

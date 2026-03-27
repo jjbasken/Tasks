@@ -12,7 +12,7 @@ export function TaskList({ tasks, bucket, onToggle, onClickTask }: Props) {
   const filtered = tasks.filter(t =>
     bucket === 'done' ? t.status === 'done' : t.status === 'active' && t.bucket === bucket
   )
-  if (filtered.length === 0) return <p style={{ color: '#aaa', fontStyle: 'italic' }}>No tasks here</p>
+  if (filtered.length === 0) return <p className="task-empty">No tasks here</p>
   return (
     <div>
       {filtered.map(task => (

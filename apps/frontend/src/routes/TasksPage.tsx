@@ -10,10 +10,6 @@ import { nextOccurrence, decryptSymmetric, openSeal, fromBase64 } from '@tasks/s
 
 type Tab = 'now' | 'later' | 'done'
 
-/** Decrypt a list's encryptedListKey into a raw base64 list key.
- *  Personal lists are encrypted symmetrically (EncryptedBlob) with the stretch key.
- *  Shared lists are sealed asymmetrically to the user's public key.
- */
 function resolveListKey(encryptedListKey: string, isShared: boolean): string | null {
   if (!isShared) {
     const stretchKey = session.getStretchKey()
@@ -65,16 +61,26 @@ export function TasksPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh' }}>
+    <div className="app-layout">
       <Sidebar activeListId={currentListId} onSelectList={setActiveListId} />
-      <div style={{ flex: 1, padding: 24 }}>
-        <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+      <div className="main-content">
+        <div className="main-header">
           {(['now', 'later', 'done'] as Tab[]).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ fontWeight: tab === t ? 'bold' : 'normal', textTransform: 'capitalize', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, borderBottom: tab === t ? '2px solid #4444ff' : '2px solid transparent', paddingBottom: 4 }}>{t}</button>
+            <button
+              key={t}
+              className={`tab-btn${tab === t ? ' active' : ''}`}
+              onClick={() => setTab(t)}
+            >
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
           ))}
-          <button onClick={() => setShowCreate(true)} style={{ marginLeft: 'auto' }}>+ Add task</button>
+          <button className="add-task-btn" onClick={() => setShowCreate(true)}>
+            + Add task
+          </button>
         </div>
-        <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} />
+        <div className="task-list-area">
+          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} />
+        </div>
       </div>
       {(selectedTask || showCreate) && (
         <TaskDetail

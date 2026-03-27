@@ -7,21 +7,32 @@ export function Sidebar({ activeListId, onSelectList }: Props) {
   const { data: lists } = useListsList()
 
   return (
-    <nav style={{ width: 200, borderRight: '1px solid #ddd', padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Lists</div>
+    <nav className="sidebar">
+      <div className="sidebar-brand">
+        <span className="sidebar-brand-icon">⚡</span>
+        <span className="sidebar-brand-name">Tasks</span>
+      </div>
+      <div className="sidebar-section-label">Lists</div>
       {lists?.map(list => (
         <button
           key={list.id}
+          className={`sidebar-list-btn${list.id === activeListId ? ' active' : ''}`}
           onClick={() => onSelectList(list.id)}
-          style={{ textAlign: 'left', background: list.id === activeListId ? '#e8e8ff' : 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px', borderRadius: 4 }}
         >
-          {list.isShared ? '🤝' : '📋'} {list.id.slice(0, 8)}…
+          <span className="sidebar-list-icon">{list.isShared ? '⇄' : '▪'}</span>
+          <span className="sidebar-list-name">{list.isShared ? 'shared' : 'personal'}</span>
         </button>
       ))}
-      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <NavLink to="/lists">Manage lists</NavLink>
-        <NavLink to="/devices">Devices</NavLink>
-        <NavLink to="/settings">Settings</NavLink>
+      <div className="sidebar-nav">
+        <NavLink to="/lists" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`}>
+          <span className="sidebar-nav-icon">⊞</span> Lists
+        </NavLink>
+        <NavLink to="/devices" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`}>
+          <span className="sidebar-nav-icon">◈</span> Devices
+        </NavLink>
+        <NavLink to="/settings" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`}>
+          <span className="sidebar-nav-icon">⚙</span> Settings
+        </NavLink>
       </div>
     </nav>
   )

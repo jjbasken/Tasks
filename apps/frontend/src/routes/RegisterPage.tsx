@@ -28,17 +28,42 @@ export function RegisterPage() {
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: '80px auto', padding: 24 }}>
-      <h1>Create Account</h1>
-      <form onSubmit={handleSubmit}>
-        <div><label>Username</label><input value={username} onChange={e => setUsername(e.target.value)} required autoFocus /></div>
-        <div><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-        <div><label>Passphrase</label><input type="password" value={passphrase} onChange={e => setPassphrase(e.target.value)} required /></div>
-        <div><label>Confirm passphrase</label><input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required /></div>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create account'}</button>
-      </form>
-      <p><Link to="/login">Back to login</Link></p>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-logo">
+          <div className="auth-logo-icon">⚡</div>
+          <span className="auth-logo-name">Tasks</span>
+        </div>
+        <h1 className="auth-heading">Create account</h1>
+        <p className="auth-sub">Your keys are generated locally and never shared</p>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label">Username</label>
+            <input className="form-input" value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Email</label>
+            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Passphrase</label>
+            <input className="form-input" type="password" value={passphrase} onChange={e => setPassphrase(e.target.value)} required />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Confirm passphrase</label>
+            <input className="form-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          <button className="btn-primary" type="submit" disabled={loading}>{loading ? 'Generating keys…' : 'Create account'}</button>
+        </form>
+        <div className="auth-link-row">
+          Already have an account? <Link to="/login">Log in</Link>
+        </div>
+        <div className="encrypt-badge">
+          <div className="encrypt-dot" />
+          End-to-end encrypted — keys never leave your device
+        </div>
+      </div>
     </div>
   )
 }

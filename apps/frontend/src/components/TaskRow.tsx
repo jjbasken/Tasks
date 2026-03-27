@@ -4,21 +4,18 @@ import type { DecryptedTask } from '../hooks/useTasks.js'
 type Props = { task: DecryptedTask; onToggle: (task: DecryptedTask) => void; onClick: (task: DecryptedTask) => void }
 
 export function TaskRow({ task, onToggle, onClick }: Props) {
+  const isDone = task.status === 'done'
   return (
-    <div
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
-      onClick={() => onClick(task)}
-    >
+    <div className="task-row" onClick={() => onClick(task)}>
       <button
-        style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid #aaa', background: 'transparent', cursor: 'pointer', flexShrink: 0 }}
+        className="task-check-btn"
         onClick={e => { e.stopPropagation(); onToggle(task) }}
         aria-label="Complete task"
+        style={isDone ? { borderColor: 'var(--accent)', background: 'var(--accent-dim)' } : undefined}
       />
-      <span style={{ flex: 1, textDecoration: task.status === 'done' ? 'line-through' : 'none', color: task.status === 'done' ? '#aaa' : 'inherit' }}>
-        {task.title}
-      </span>
+      <span className={`task-title${isDone ? ' done' : ''}`}>{task.title}</span>
       {task.rrule && (
-        <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }} title={describeRrule(task.rrule) ?? ''}>🔁</span>
+        <span className="task-recur-badge" title={describeRrule(task.rrule) ?? ''}>↻</span>
       )}
     </div>
   )
