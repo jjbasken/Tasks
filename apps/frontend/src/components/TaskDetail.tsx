@@ -27,11 +27,11 @@ export function TaskDetail({ task, listId, listKeyB64, onClose }: Props) {
     onClose()
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!task) return
     if (!confirm('Delete this task?')) return
-    await deleteTask.mutateAsync({ taskId: task.id })
     onClose()
+    deleteTask.mutate({ taskId: task.id })
   }
 
   return (
