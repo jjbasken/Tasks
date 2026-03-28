@@ -29,8 +29,6 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     depends_on:
       - frontend
-    profiles:
-      - tunnel
 
 volumes:
   sqlite-data:
