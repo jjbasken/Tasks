@@ -66,9 +66,13 @@ export function TasksPage() {
     const updated: TaskPayload = { ...task, status: isDone ? 'done' : 'active', completed_at: isDone ? new Date().toISOString() : null }
     await updateTask.mutateAsync(task.id, updated, listKeyB64)
     if (isDone && task.rrule) {
-      const next = nextOccurrence(task.rrule, new Date())
+      const anchor = task.due_date ? new Date(task.due_date + 'T12:00:00') : new Date()
+      const next = nextOccurrence(task.rrule, anchor)
       if (next) {
-        const nextPayload: TaskPayload = { ...task, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0] }
+        const in7Days = new Date()
+        in7Days.setDate(in7Days.getDate() + 7)
+        const bucket = next > in7Days ? 'later' : 'now'
+        const nextPayload: TaskPayload = { ...task, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
         await createTask.mutateAsync(nextPayload, listKeyB64)
       }
     }

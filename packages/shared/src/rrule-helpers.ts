@@ -7,7 +7,10 @@ import { RRule } from 'rrule'
 export function nextOccurrence(rruleStr: string, after: Date): Date | null {
   try {
     const rule = RRule.fromString(rruleStr)
-    return rule.after(after, false)
+    // Anchor DTSTART to `after` so occurrences are relative to the task's due date,
+    // not the date the rule was originally created.
+    const anchored = new RRule({ ...rule.origOptions, dtstart: after })
+    return anchored.after(after, false)
   } catch {
     return null
   }
