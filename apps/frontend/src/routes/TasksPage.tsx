@@ -79,6 +79,14 @@ export function TasksPage() {
           const nextPayload: TaskPayload = { title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
           await createTask.mutateAsync(nextPayload, listKeyB64)
         }
+      } else if (!isDone && task.rrule) {
+        // Undoing a completed recurring task — delete the next occurrence that was spawned
+        const orphanIds = tasks
+          .filter(t => t.id !== task.id && t.status === 'active' && t.rrule === task.rrule && !!t.due_date && !!task.due_date && t.due_date > task.due_date)
+          .map(t => t.id)
+        if (orphanIds.length > 0) {
+          await clearDone.mutateAsync({ listId: currentListId, taskIds: orphanIds })
+        }
       }
     } finally {
       setCompletingIds(prev => { const s = new Set(prev); s.delete(task.id); return s })
