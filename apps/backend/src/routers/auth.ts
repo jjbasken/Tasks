@@ -2,7 +2,7 @@ import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
-import { router, publicProcedure, protectedProcedure } from '../trpc.js'
+import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc.js'
 import { users, lists, listMemberships } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
 
@@ -19,7 +19,7 @@ export const authRouter = router({
       }
     }),
 
-  register: publicProcedure
+  register: adminProcedure
     .input(z.object({
       username: z.string().min(2).max(40),
       email: z.string().email(),

@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router'
 import { useListsList } from '../hooks/useLists.js'
+import { useAuth } from '../hooks/useAuth.js'
 
 type Props = { activeListId: string; onSelectList: (id: string) => void }
 
 export function Sidebar({ activeListId, onSelectList }: Props) {
   const { data: lists } = useListsList()
+  const { isAdmin } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(() => window.innerWidth > 768)
 
   function handleSelectList(id: string) {
@@ -46,6 +48,11 @@ export function Sidebar({ activeListId, onSelectList }: Props) {
           <NavLink to="/settings" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`} onClick={() => setMobileOpen(false)}>
             <span className="sidebar-nav-icon">⚙</span> Settings
           </NavLink>
+          {isAdmin && (
+            <NavLink to="/register" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`} onClick={() => setMobileOpen(false)}>
+              <span className="sidebar-nav-icon">+</span> Create user
+            </NavLink>
+          )}
         </div>
       </nav>
     </>

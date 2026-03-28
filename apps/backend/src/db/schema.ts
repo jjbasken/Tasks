@@ -9,6 +9,7 @@ export const users = sqliteTable('users', {
   kdfSalt: text('kdf_salt').notNull(),
   encryptedPrivateKey: text('encrypted_private_key').notNull(),
   encryptedPersonalListKey: text('encrypted_personal_list_key').notNull(),
+  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at').notNull(),
 })
 

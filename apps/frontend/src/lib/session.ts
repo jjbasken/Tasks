@@ -6,6 +6,7 @@ const KEYS = {
   stretchKey: 'tasks:stretchKey',   // base64 Uint8Array
   privateKey: 'tasks:privateKey',   // base64 curve25519 private key (from keypair)
   publicKey: 'tasks:publicKey',     // base64 curve25519 public key
+  isAdmin: 'tasks:isAdmin',
 } as const
 
 export const session = {
@@ -24,6 +25,9 @@ export const session = {
 
   setPublicKey: (k: string) => localStorage.setItem(KEYS.publicKey, k),
   getPublicKey: () => localStorage.getItem(KEYS.publicKey),
+
+  setIsAdmin: (v: boolean) => localStorage.setItem(KEYS.isAdmin, v ? '1' : '0'),
+  getIsAdmin: () => localStorage.getItem(KEYS.isAdmin) === '1',
 
   clear: () => Object.values(KEYS).forEach(k => localStorage.removeItem(k)),
 }

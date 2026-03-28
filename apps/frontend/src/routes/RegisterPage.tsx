@@ -1,25 +1,29 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router'
 import { useAuth } from '../hooks/useAuth.js'
 
 export function RegisterPage() {
   const { register } = useAuth()
-  const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (passphrase !== confirm) { setError('Passphrases do not match'); return }
     setError(null)
+    setSuccess(null)
     setLoading(true)
     try {
       await register(username, email, passphrase)
-      navigate('/tasks')
+      setSuccess(`Account created for ${username}`)
+      setUsername('')
+      setEmail('')
+      setPassphrase('')
+      setConfirm('')
     } catch (err: any) {
       setError(err?.message ?? 'Registration failed')
     } finally {
@@ -35,7 +39,7 @@ export function RegisterPage() {
           <span className="auth-logo-name">Tasks</span>
         </div>
         <h1 className="auth-heading">Create account</h1>
-        <p className="auth-sub">Your keys are generated locally and never shared</p>
+        <p className="auth-sub">Admin: create a new user account</p>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
             <label className="form-label">Username</label>
@@ -54,15 +58,9 @@ export function RegisterPage() {
             <input className="form-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
           </div>
           {error && <div className="form-error">{error}</div>}
-          <button className="btn-primary" type="submit" disabled={loading}>{loading ? 'Generating keys…' : 'Create account'}</button>
+          {success && <div className="form-success">{success}</div>}
+          <button className="btn-primary" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
         </form>
-        <div className="auth-link-row">
-          Already have an account? <Link to="/login">Log in</Link>
-        </div>
-        <div className="encrypt-badge">
-          <div className="encrypt-dot" />
-          End-to-end encrypted — keys never leave your device
-        </div>
       </div>
     </div>
   )

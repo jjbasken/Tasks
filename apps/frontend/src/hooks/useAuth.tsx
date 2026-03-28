@@ -9,6 +9,7 @@ import {
 
 type AuthContextType = {
   isLoggedIn: boolean
+  isAdmin: boolean
   login: (username: string, passphrase: string) => Promise<void>
   register: (username: string, email: string, passphrase: string) => Promise<void>
   logout: () => void
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!session.getToken())
+  const [isAdmin, setIsAdmin] = useState(() => session.getIsAdmin())
   const utils = trpc.useUtils()
 
   async function login(username: string, passphrase: string) {
@@ -32,6 +34,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session.setStretchKey(stretchKey)
     session.setPrivateKey(privateKeyB64)
     if (userInfo) session.setPublicKey(userInfo.publicKey)
+    const me = await utils.users.me.fetch()
+    session.setIsAdmin(me.isAdmin)
+    setIsAdmin(me.isAdmin)
     setIsLoggedIn(true)
   }
 
@@ -53,16 +58,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       encryptedPersonalListKey: JSON.stringify(encListKey),
       encryptedPersonalListName: JSON.stringify(encListName),
     })
-    await login(username, passphrase)
   }
 
   function logout() {
     session.clear()
     setIsLoggedIn(false)
+    setIsAdmin(false)
   }
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, login, register, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

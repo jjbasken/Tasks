@@ -10,4 +10,9 @@ export const usersRouter = router({
       const [user] = await ctx.db.select({ userId: users.id, username: users.username, publicKey: users.publicKey }).from(users).where(eq(users.username, input.username))
       return user ?? null
     }),
+
+  me: protectedProcedure.query(async ({ ctx }) => {
+    const [user] = await ctx.db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, ctx.userId))
+    return { isAdmin: user?.isAdmin ?? false }
+  }),
 })
