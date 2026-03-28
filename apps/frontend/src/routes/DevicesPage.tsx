@@ -1,9 +1,11 @@
+import { useNavigate } from 'react-router'
 import { session } from '../lib/session.js'
 import { sealToPublicKey } from '@tasks/shared'
 import { useDeviceList, usePendingDevices, useApproveDevice, useRevokeDevice } from '../hooks/useDevices.js'
 import { Sidebar } from '../components/Sidebar.js'
 
 export function DevicesPage() {
+  const navigate = useNavigate()
   const { data: devices } = useDeviceList()
   const { data: pending } = usePendingDevices()
   const approve = useApproveDevice()
@@ -24,7 +26,7 @@ export function DevicesPage() {
 
   return (
     <div className="app-layout">
-      <Sidebar activeListId="" onSelectList={() => {}} />
+      <Sidebar activeListId="" onSelectList={(id) => navigate(`/tasks?listId=${id}`)} />
       <div className="main-content">
         <div className="inner-page">
           <h1 className="page-title">Devices</h1>

@@ -1,11 +1,13 @@
+import { useNavigate } from 'react-router'
 import { useAuth } from '../hooks/useAuth.js'
 import { Sidebar } from '../components/Sidebar.js'
 
 export function SettingsPage() {
+  const navigate = useNavigate()
   const { logout } = useAuth()
   return (
     <div className="app-layout">
-      <Sidebar activeListId="" onSelectList={() => {}} />
+      <Sidebar activeListId="" onSelectList={(id) => navigate(`/tasks?listId=${id}`)} />
       <div className="main-content">
         <div className="inner-page">
           <h1 className="page-title">Settings</h1>
