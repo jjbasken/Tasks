@@ -6,7 +6,7 @@ type Props = { activeListId: string; onSelectList: (id: string) => void }
 
 export function Sidebar({ activeListId, onSelectList }: Props) {
   const { data: lists } = useListsList()
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(() => window.innerWidth > 768)
 
   function handleSelectList(id: string) {
     onSelectList(id)

@@ -932,6 +932,10 @@ select option { background: var(--bg-elevated); color: var(--text); }
   z-index: 69;
 }
 
+@media (min-width: 769px) {
+  .sidebar-backdrop { display: none; }
+}
+
 /* ─── MOBILE ─────────────────────────────────────────── */
 @media (max-width: 768px) {
   :root { --panel-w: 100vw; }
