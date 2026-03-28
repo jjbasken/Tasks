@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
@@ -47,6 +47,17 @@ export function TasksPage() {
   const { data: tasks = [] } = useTaskList(currentListId, listKeyB64)
   const updateTask = useUpdateTask(currentListId)
   const createTask = useCreateTask(currentListId)
+
+  useEffect(() => {
+    if (!listKeyB64) return
+    const in7Days = new Date()
+    in7Days.setDate(in7Days.getDate() + 7)
+    const cutoff = in7Days.toISOString().split('T')[0]
+    const toPromote = tasks.filter(t => t.status === 'active' && t.bucket === 'later' && !!t.due_date && t.due_date <= cutoff)
+    toPromote.forEach(task => {
+      updateTask.mutateAsync(task.id, { ...task, bucket: 'now' }, listKeyB64)
+    })
+  }, [tasks])
 
   async function handleToggle(task: DecryptedTask) {
     if (!listKeyB64) return
