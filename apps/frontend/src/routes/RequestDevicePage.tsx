@@ -57,7 +57,7 @@ export function RequestDevicePage() {
   useEffect(() => {
     if (stage !== 'waiting') return
 
-    const interval = setInterval(async () => {
+    async function poll() {
       const p = pendingRef.current
       if (!p) return
       try {
@@ -81,9 +81,19 @@ export function RequestDevicePage() {
       } catch {
         // polling errors are expected — keep waiting
       }
-    }, 3000)
+    }
 
-    return () => clearInterval(interval)
+    const interval = setInterval(poll, 3000)
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') poll()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [stage])
 
   if (stage === 'waiting') {
