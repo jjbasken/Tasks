@@ -872,3 +872,142 @@ body {
 
 /* ─── SELECT DARK ────────────────────────────────────── */
 select option { background: var(--bg-elevated); color: var(--text); }
+
+/* ─── MOBILE ─────────────────────────────────────────── */
+.sidebar-hamburger {
+  display: none;
+}
+
+.sidebar-close-btn {
+  display: none;
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  :root {
+    --panel-w: 100vw;
+  }
+
+  /* Prevent iOS input zoom */
+  .form-input,
+  .field-input,
+  .field-textarea,
+  .field-select,
+  .inline-input,
+  .recur-custom-input {
+    font-size: 16px;
+  }
+
+  .sidebar-hamburger {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 60;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    cursor: pointer;
+    width: 38px;
+    height: 38px;
+  }
+
+  .sidebar-hamburger span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: var(--text);
+    border-radius: 1px;
+  }
+
+  .sidebar-close-btn { display: block; }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(2px);
+    z-index: 69;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    width: 100vw;
+  }
+
+  .main-header {
+    padding: 14px 16px 0 60px;
+  }
+
+  .task-list-area {
+    padding: 8px 12px;
+  }
+
+  .task-row {
+    padding: 13px 10px;
+    min-height: 48px;
+  }
+
+  .task-check-btn {
+    width: 22px;
+    height: 22px;
+  }
+
+  .task-panel {
+    width: 100vw;
+    left: 0;
+    right: 0;
+  }
+
+  .inner-page {
+    padding: 24px 20px;
+    padding-top: 68px;
+  }
+
+  .auth-card {
+    padding: 32px 24px 28px;
+  }
+
+  .add-task-btn {
+    padding: 8px 12px;
+    min-height: 36px;
+  }
+
+  /* Safe area insets for notched phones */
+  .app-layout {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .auth-page {
+    padding-top: calc(24px + env(safe-area-inset-top));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
