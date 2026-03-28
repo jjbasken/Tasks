@@ -260,6 +260,22 @@ body {
   transform: translateX(0);
 }
 
+@media (min-width: 769px) {
+  .sidebar {
+    position: static;
+    transform: none;
+    width: 0;
+    overflow: hidden;
+    box-shadow: none;
+    transition: width 0.22s cubic-bezier(0.25,0.46,0.45,0.94);
+  }
+
+  .sidebar.sidebar-open {
+    width: var(--sidebar-w);
+    transform: none;
+  }
+}
+
 .sidebar-brand {
   display: flex;
   align-items: center;
