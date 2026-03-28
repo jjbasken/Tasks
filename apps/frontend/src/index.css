@@ -239,6 +239,10 @@ body {
 
 /* ─── SIDEBAR ────────────────────────────────────────── */
 .sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
   width: var(--sidebar-w);
   background: var(--bg-elevated);
   border-right: 1px solid var(--border);
@@ -246,6 +250,14 @@ body {
   flex-direction: column;
   padding: 14px 10px;
   flex-shrink: 0;
+  z-index: 70;
+  transform: translateX(-100%);
+  transition: transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94);
+  box-shadow: var(--shadow-lg);
+}
+
+.sidebar.sidebar-open {
+  transform: translateX(0);
 }
 
 .sidebar-brand {
@@ -352,7 +364,7 @@ body {
 .main-header {
   display: flex;
   align-items: center;
-  padding: 22px 28px 0;
+  padding: 22px 28px 0 66px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
@@ -654,7 +666,7 @@ body {
 
 /* ─── INNER PAGES ────────────────────────────────────── */
 .inner-page {
-  padding: 36px 40px;
+  padding: 36px 40px 36px 66px;
   max-width: 680px;
   overflow-y: auto;
   height: 100%;
@@ -873,13 +885,35 @@ body {
 /* ─── SELECT DARK ────────────────────────────────────── */
 select option { background: var(--bg-elevated); color: var(--text); }
 
-/* ─── MOBILE ─────────────────────────────────────────── */
+/* ─── HAMBURGER & SIDEBAR TOGGLE ─────────────────────── */
 .sidebar-hamburger {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 60;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px 9px;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+}
+
+.sidebar-hamburger span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 1px;
 }
 
 .sidebar-close-btn {
-  display: none;
+  display: block;
   margin-left: auto;
   background: transparent;
   border: none;
@@ -890,12 +924,17 @@ select option { background: var(--bg-elevated); color: var(--text); }
   line-height: 1;
 }
 
-.sidebar-backdrop { display: none; }
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(2px);
+  z-index: 69;
+}
 
+/* ─── MOBILE ─────────────────────────────────────────── */
 @media (max-width: 768px) {
-  :root {
-    --panel-w: 100vw;
-  }
+  :root { --panel-w: 100vw; }
 
   /* Prevent iOS input zoom */
   .form-input,
@@ -907,105 +946,20 @@ select option { background: var(--bg-elevated); color: var(--text); }
     font-size: 16px;
   }
 
-  .sidebar-hamburger {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    position: fixed;
-    top: 14px;
-    left: 14px;
-    z-index: 60;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 8px 9px;
-    cursor: pointer;
-    width: 38px;
-    height: 38px;
-  }
+  .main-header { padding: 14px 16px 0 60px; }
+  .task-list-area { padding: 8px 12px; }
 
-  .sidebar-hamburger span {
-    display: block;
-    width: 18px;
-    height: 2px;
-    background: var(--text);
-    border-radius: 1px;
-  }
+  .task-row { padding: 13px 10px; min-height: 48px; }
+  .task-check-btn { width: 22px; height: 22px; }
 
-  .sidebar-close-btn { display: block; }
+  .task-panel { width: 100vw; left: 0; right: 0; }
 
-  .sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(2px);
-    z-index: 69;
-  }
-
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    z-index: 70;
-    transform: translateX(-100%);
-    transition: transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94);
-    box-shadow: var(--shadow-lg);
-  }
-
-  .sidebar.sidebar-open {
-    transform: translateX(0);
-  }
-
-  .main-content {
-    width: 100vw;
-  }
-
-  .main-header {
-    padding: 14px 16px 0 60px;
-  }
-
-  .task-list-area {
-    padding: 8px 12px;
-  }
-
-  .task-row {
-    padding: 13px 10px;
-    min-height: 48px;
-  }
-
-  .task-check-btn {
-    width: 22px;
-    height: 22px;
-  }
-
-  .task-panel {
-    width: 100vw;
-    left: 0;
-    right: 0;
-  }
-
-  .inner-page {
-    padding: 24px 20px;
-    padding-top: 68px;
-  }
-
-  .auth-card {
-    padding: 32px 24px 28px;
-  }
-
-  .add-task-btn {
-    padding: 8px 12px;
-    min-height: 36px;
-  }
+  .inner-page { padding: 24px 20px; padding-top: 68px; }
+  .auth-card { padding: 32px 24px 28px; }
+  .add-task-btn { padding: 8px 12px; min-height: 36px; }
 
   /* Safe area insets for notched phones */
-  .app-layout {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
+  .app-layout { padding-bottom: env(safe-area-inset-bottom); }
   .auth-page {
     padding-top: calc(24px + env(safe-area-inset-top));
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
