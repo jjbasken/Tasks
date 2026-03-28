@@ -76,7 +76,7 @@ export function TasksPage() {
           const in7Days = new Date()
           in7Days.setDate(in7Days.getDate() + 7)
           const bucket = next > in7Days ? 'later' : 'now'
-          const nextPayload: TaskPayload = { ...task, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
+          const nextPayload: TaskPayload = { title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
           await createTask.mutateAsync(nextPayload, listKeyB64)
         }
       }

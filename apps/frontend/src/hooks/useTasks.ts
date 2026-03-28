@@ -17,7 +17,7 @@ export function useTaskList(listId: string, listKeyB64: string | null) {
           try {
             const blob = JSON.parse(row.encryptedPayload)
             const payload: TaskPayload = JSON.parse(decryptSymmetric(blob, key))
-            return [{ id: row.id, createdAt: row.createdAt, updatedAt: row.updatedAt, ...payload }]
+            return [{ ...payload, id: row.id, createdAt: row.createdAt, updatedAt: row.updatedAt }]
           } catch {
             return []  // skip rows that fail to decrypt (e.g. wrong key)
           }
