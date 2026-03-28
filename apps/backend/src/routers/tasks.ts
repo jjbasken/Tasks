@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { router, protectedProcedure } from '../router.js'
@@ -47,5 +47,13 @@ export const tasksRouter = router({
       if (!task) throw new TRPCError({ code: 'NOT_FOUND' })
       await assertListAccess(ctx.db, task.listId, ctx.userId)
       await ctx.db.delete(tasks).where(eq(tasks.id, input.taskId))
+    }),
+
+  clearDone: protectedProcedure
+    .input(z.object({ listId: z.string(), taskIds: z.array(z.string()) }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.taskIds.length === 0) return
+      await assertListAccess(ctx.db, input.listId, ctx.userId)
+      await ctx.db.delete(tasks).where(and(eq(tasks.listId, input.listId), inArray(tasks.id, input.taskIds)))
     }),
 })

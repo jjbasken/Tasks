@@ -64,3 +64,10 @@ export function useDeleteTask(listId: string) {
     onSuccess: () => utils.tasks.list.invalidate({ listId }),
   })
 }
+
+export function useClearDone(listId: string) {
+  const utils = trpc.useUtils()
+  return trpc.tasks.clearDone.useMutation({
+    onSuccess: () => utils.tasks.list.invalidate({ listId }),
+  })
+}

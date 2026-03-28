@@ -4,7 +4,7 @@ import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
 import { useListsList } from '../hooks/useLists.js'
-import { useTaskList, useUpdateTask, useCreateTask, type DecryptedTask } from '../hooks/useTasks.js'
+import { useTaskList, useUpdateTask, useCreateTask, useClearDone, type DecryptedTask } from '../hooks/useTasks.js'
 import { session } from '../lib/session.js'
 import type { TaskPayload } from '@tasks/shared'
 import { nextOccurrence, decryptSymmetric, openSeal, fromBase64 } from '@tasks/shared'
@@ -47,6 +47,7 @@ export function TasksPage() {
   const { data: tasks = [] } = useTaskList(currentListId, listKeyB64)
   const updateTask = useUpdateTask(currentListId)
   const createTask = useCreateTask(currentListId)
+  const clearDone = useClearDone(currentListId)
 
   useEffect(() => {
     if (!listKeyB64) return
@@ -87,9 +88,22 @@ export function TasksPage() {
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
-          <button className="add-task-btn" onClick={() => setShowCreate(true)}>
-            + Add task
-          </button>
+          {tab !== 'done' && (
+            <button className="add-task-btn" onClick={() => setShowCreate(true)}>
+              + Add task
+            </button>
+          )}
+          {tab === 'done' && (
+            <button
+              className="add-task-btn"
+              onClick={() => {
+                const doneIds = tasks.filter(t => t.status === 'done').map(t => t.id)
+                if (doneIds.length > 0) clearDone.mutate({ listId: currentListId, taskIds: doneIds })
+              }}
+            >
+              Clear done
+            </button>
+          )}
         </div>
         <div className="task-list-area">
           <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} />
