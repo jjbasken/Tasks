@@ -6,11 +6,12 @@ type Props = {
   bucket: 'now' | 'later' | 'done'
   onToggle: (task: DecryptedTask) => void
   onClickTask: (task: DecryptedTask) => void
+  completingIds?: Set<string>
 }
 
-export function TaskList({ tasks, bucket, onToggle, onClickTask }: Props) {
+export function TaskList({ tasks, bucket, onToggle, onClickTask, completingIds }: Props) {
   const filtered = tasks
-    .filter(t => bucket === 'done' ? t.status === 'done' : t.status === 'active' && t.bucket === bucket)
+    .filter(t => completingIds?.has(t.id) ? false : bucket === 'done' ? t.status === 'done' : t.status === 'active' && t.bucket === bucket)
     .sort((a, b) => {
       if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date)
       if (a.due_date) return -1

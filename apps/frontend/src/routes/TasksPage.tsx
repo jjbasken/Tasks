@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
@@ -48,6 +48,7 @@ export function TasksPage() {
   const updateTask = useUpdateTask(currentListId)
   const createTask = useCreateTask(currentListId)
   const clearDone = useClearDone(currentListId)
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!listKeyB64) return
@@ -62,19 +63,25 @@ export function TasksPage() {
 
   async function handleToggle(task: DecryptedTask) {
     if (!listKeyB64) return
-    const isDone = task.status === 'active'
-    const updated: TaskPayload = { ...task, status: isDone ? 'done' : 'active', completed_at: isDone ? new Date().toISOString() : null }
-    await updateTask.mutateAsync(task.id, updated, listKeyB64)
-    if (isDone && task.rrule) {
-      const anchor = task.due_date ? new Date(task.due_date + 'T12:00:00') : new Date()
-      const next = nextOccurrence(task.rrule, anchor)
-      if (next) {
-        const in7Days = new Date()
-        in7Days.setDate(in7Days.getDate() + 7)
-        const bucket = next > in7Days ? 'later' : 'now'
-        const nextPayload: TaskPayload = { ...task, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
-        await createTask.mutateAsync(nextPayload, listKeyB64)
+    if (completingIds.has(task.id)) return
+    setCompletingIds(prev => new Set(prev).add(task.id))
+    try {
+      const isDone = task.status === 'active'
+      const updated: TaskPayload = { ...task, status: isDone ? 'done' : 'active', completed_at: isDone ? new Date().toISOString() : null }
+      await updateTask.mutateAsync(task.id, updated, listKeyB64)
+      if (isDone && task.rrule) {
+        const anchor = task.due_date ? new Date(task.due_date + 'T12:00:00') : new Date()
+        const next = nextOccurrence(task.rrule, anchor)
+        if (next) {
+          const in7Days = new Date()
+          in7Days.setDate(in7Days.getDate() + 7)
+          const bucket = next > in7Days ? 'later' : 'now'
+          const nextPayload: TaskPayload = { ...task, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
+          await createTask.mutateAsync(nextPayload, listKeyB64)
+        }
       }
+    } finally {
+      setCompletingIds(prev => { const s = new Set(prev); s.delete(task.id); return s })
     }
   }
 
@@ -110,7 +117,7 @@ export function TasksPage() {
           )}
         </div>
         <div className="task-list-area">
-          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} />
+          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} completingIds={completingIds} />
         </div>
       </div>
       {(selectedTask || showCreate) && (
