@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'bun:test'
 import { createCallerFactory } from '@trpc/server/unstable-core-do-not-import'
-import { randomUUID } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { appRouter } from '../src/router.js'
 import { makeCtx, makeAdminCtx } from './helpers.js'
