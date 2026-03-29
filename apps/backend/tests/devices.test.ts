@@ -24,6 +24,26 @@ describe('devices.requestApproval', () => {
   })
 })
 
+describe('devices.checkApproval token reuse prevention', () => {
+  it('clears pendingToken after first successful checkApproval', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const anonCaller = createCaller({ db, userId: null })
+    const authedCaller = createCaller({ db, userId })
+
+    const { deviceId, pendingToken } = await anonCaller.devices.requestApproval({ username: 'u', name: 'Test', devicePublicKey: 'pk' })
+    await authedCaller.devices.approve({ deviceId, sealedUserPrivateKey: 'sealed' })
+
+    // First call succeeds
+    const first = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
+    expect(first?.token).toBeString()
+
+    // Second call with same token returns null (token was cleared)
+    const second = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
+    expect(second).toBeNull()
+  })
+})
+
 describe('devices.listPending + approve + checkApproval', () => {
   it('full device approval flow', async () => {
     const db = makeTestDb()

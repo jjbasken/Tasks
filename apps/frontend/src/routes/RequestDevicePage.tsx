@@ -61,7 +61,7 @@ export function RequestDevicePage() {
       const p = pendingRef.current
       if (!p) return
       try {
-        const result = await utils.devices.checkApproval.fetch({
+        const result = await utils.client.devices.checkApproval.mutate({
           deviceId: p.deviceId,
           pendingToken: p.pendingToken,
         })

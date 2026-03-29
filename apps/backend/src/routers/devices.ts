@@ -34,11 +34,16 @@ export const devicesRouter = router({
 
   checkApproval: publicProcedure
     .input(z.object({ deviceId: z.string(), pendingToken: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const [device] = await ctx.db.select().from(devices).where(and(eq(devices.id, input.deviceId), eq(devices.pendingToken, input.pendingToken)))
-      if (!device || device.status !== 'approved' || !device.sealedUserPrivateKey) return null
-      const token = await signToken(device.userId)
-      return { token, sealedUserPrivateKey: device.sealedUserPrivateKey }
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.transaction(async (tx) => {
+        const [device] = await tx.select().from(devices)
+          .where(and(eq(devices.id, input.deviceId), eq(devices.pendingToken, input.pendingToken)))
+        if (!device || device.status !== 'approved' || !device.sealedUserPrivateKey) return null
+        // Clear the pendingToken so it cannot be reused
+        await tx.update(devices).set({ pendingToken: null }).where(eq(devices.id, input.deviceId))
+        const token = await signToken(device.userId)
+        return { token, sealedUserPrivateKey: device.sealedUserPrivateKey }
+      })
     }),
 
   list: protectedProcedure.query(async ({ ctx }) => {
