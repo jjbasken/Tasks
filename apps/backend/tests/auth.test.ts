@@ -85,10 +85,15 @@ describe('auth.getLoginChallenge', () => {
     expect(challenge.encryptedPrivateKey).toBeString()
   })
 
-  it('throws NOT_FOUND for unknown username', async () => {
+  it('throws UNAUTHORIZED (not NOT_FOUND) for unknown username', async () => {
     const ctx = makeCtx()
     const caller = createCaller(ctx)
-    await expect(caller.auth.getLoginChallenge({ username: 'nobody' })).rejects.toThrow()
+    try {
+      await caller.auth.getLoginChallenge({ username: 'nobody' })
+      expect(true).toBe(false) // should not reach here
+    } catch (err: any) {
+      expect(err.code).toBe('UNAUTHORIZED')
+    }
   })
 })
 

@@ -11,7 +11,7 @@ export const authRouter = router({
     .input(z.object({ username: z.string() }))
     .query(async ({ ctx, input }) => {
       const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
-      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' })
+      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid credentials' })
       return {
         kdfSalt: user.kdfSalt,
         encryptedPrivateKey: user.encryptedPrivateKey,
