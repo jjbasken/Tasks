@@ -44,7 +44,6 @@ export function migrate(db: Db) {
     )
   `)
   try { sqlite.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`) } catch {}
-  sqlite.run(`UPDATE users SET is_admin = 1 WHERE username = 'jeremy'`)
   sqlite.run(`
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,

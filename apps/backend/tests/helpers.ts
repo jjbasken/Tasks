@@ -1,3 +1,6 @@
+// Ensure JWT_SECRET is set for tests
+process.env.JWT_SECRET ??= 'test-secret-do-not-use-in-production'
+
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { randomUUID } from 'crypto'

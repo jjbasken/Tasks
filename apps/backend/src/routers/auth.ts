@@ -1,8 +1,8 @@
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { eq, count } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
-import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc.js'
+import { router, publicProcedure, protectedProcedure, bootstrapOrAdminProcedure } from '../trpc.js'
 import { users, lists, listMemberships } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
 
@@ -19,7 +19,7 @@ export const authRouter = router({
       }
     }),
 
-  register: adminProcedure
+  register: bootstrapOrAdminProcedure
     .input(z.object({
       username: z.string().min(2).max(40),
       email: z.string().email(),
@@ -37,6 +37,9 @@ export const authRouter = router({
       const passwordHash = await Bun.password.hash(input.passwordHash, { algorithm: 'argon2id' })
       const userId = randomUUID()
       const now = Date.now()
+      // Bootstrap: first user always becomes admin
+      const [{ value: userCount }] = await ctx.db.select({ value: count() }).from(users)
+      const isBootstrap = userCount === 0
       await ctx.db.insert(users).values({
         id: userId,
         username: input.username,
@@ -46,7 +49,7 @@ export const authRouter = router({
         kdfSalt: input.kdfSalt,
         encryptedPrivateKey: input.encryptedPrivateKey,
         encryptedPersonalListKey: input.encryptedPersonalListKey,
-        isAdmin: input.isAdmin ?? false,
+        isAdmin: isBootstrap || (input.isAdmin ?? false),
         createdAt: now,
       })
       // Create the user's personal list + membership so lists.list() works immediately after login

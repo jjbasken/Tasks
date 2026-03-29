@@ -39,9 +39,20 @@ describe('auth.register', () => {
     await expect(caller.auth.register({ ...payload, email: 'bob2@example.com' })).rejects.toThrow()
   })
 
-  it('throws UNAUTHORIZED when called without admin context', async () => {
+  it('throws UNAUTHORIZED when called without admin context after first user exists', async () => {
+    // Bootstrap the first user, then verify unauthenticated callers are rejected
     const ctx = makeCtx()
     const caller = createCaller(ctx)
+    await caller.auth.register({
+      username: 'bootstrap',
+      email: 'bootstrap@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })
     await expect(caller.auth.register({
       username: 'x',
       email: 'x@example.com',
@@ -113,6 +124,54 @@ describe('auth.login', () => {
       encryptedPersonalListName: '{}',
     })
     await expect(caller.auth.login({ username: 'eve', passwordHash: 'wrong' })).rejects.toThrow()
+  })
+})
+
+describe('auth.register bootstrap mode', () => {
+  it('allows unauthenticated first registration and grants isAdmin', async () => {
+    // Fresh DB with zero users — unauthenticated caller should be allowed
+    const ctx = makeCtx()  // userId: null
+    const caller = createCaller(ctx)
+    const { userId } = await caller.auth.register({
+      username: 'firstuser',
+      email: 'first@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })
+    const rows = await ctx.db.select().from((await import('../src/db/schema.js')).users)
+    const created = rows.find(u => u.id === userId)
+    expect(created?.isAdmin).toBe(true)
+  })
+
+  it('rejects unauthenticated registration when users already exist', async () => {
+    const ctx = makeCtx()
+    const caller = createCaller(ctx)
+    // First registration succeeds (bootstrap)
+    await caller.auth.register({
+      username: 'first',
+      email: 'first@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })
+    // Second registration without auth must fail
+    await expect(caller.auth.register({
+      username: 'second',
+      email: 'second@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })).rejects.toThrow()
   })
 })
 
