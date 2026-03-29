@@ -10,6 +10,8 @@ migrate(db)
 
 const app = new Hono()
 
+if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable must be set')
+
 const corsOrigin = process.env.CORS_ORIGIN
 if (!corsOrigin) throw new Error('CORS_ORIGIN environment variable must be set')
 app.use('/api/*', cors({ origin: corsOrigin, credentials: true }))
