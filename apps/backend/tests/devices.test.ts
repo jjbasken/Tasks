@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'bun:test'
-import { createCallerFactory } from '@trpc/server'
+import { createCallerFactory } from '@trpc/server/unstable-core-do-not-import'
 import { randomUUID } from 'crypto'
 import { appRouter } from '../src/router.js'
 import { makeTestDb } from './helpers.js'
 import { users } from '../src/db/schema.js'
 
-const createCaller = createCallerFactory(appRouter)
+const createCaller = createCallerFactory()(appRouter)
 
 async function seedUser(db: ReturnType<typeof makeTestDb>) {
   const userId = randomUUID()
