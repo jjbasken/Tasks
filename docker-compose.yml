@@ -19,7 +19,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     volumes:
-      - sqlite-data:/data
+      - ${DB_DATA_PATH:-./data}:/data
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -29,6 +29,3 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     depends_on:
       - frontend
-
-volumes:
-  sqlite-data:
