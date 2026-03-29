@@ -1,10 +1,14 @@
 import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router'
 import { useAuth } from '../hooks/useAuth.js'
 import { trpc } from '../lib/trpc.js'
 
 export function RegisterPage() {
   const { register } = useAuth()
   const utils = trpc.useUtils()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isBootstrapSetup = location.pathname === '/setup'
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [passphrase, setPassphrase] = useState('')
@@ -28,6 +32,7 @@ export function RegisterPage() {
     setLoading(true)
     try {
       await register(username, email, passphrase, isAdmin)
+      if (isBootstrapSetup) { navigate('/login'); return }
       setSuccess(`Account created for ${username}`)
       setUsername('')
       setEmail('')

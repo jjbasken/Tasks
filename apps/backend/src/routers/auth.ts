@@ -7,6 +7,11 @@ import { users, lists, listMemberships } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
 
 export const authRouter = router({
+  isBootstrap: publicProcedure.query(async ({ ctx }) => {
+    const [{ value: userCount }] = await ctx.db.select({ value: count() }).from(users)
+    return { bootstrap: userCount === 0 }
+  }),
+
   getLoginChallenge: publicProcedure
     .input(z.object({ username: z.string() }))
     .query(async ({ ctx, input }) => {

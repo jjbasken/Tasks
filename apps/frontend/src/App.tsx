@@ -28,6 +28,7 @@ export function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/setup" element={<RegisterPage />} />
               <Route path="/device-request" element={<RequestDevicePage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/tasks" element={<TasksPage />} />

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { useAuth } from '../hooks/useAuth.js'
+import { trpc } from '../lib/trpc.js'
 
 export function LoginPage() {
   const { login } = useAuth()
+  const { data: bootstrapData } = trpc.auth.isBootstrap.useQuery()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [passphrase, setPassphrase] = useState('')
@@ -46,7 +48,10 @@ export function LoginPage() {
           <button className="btn-primary" type="submit" disabled={loading}>{loading ? 'Unlocking…' : 'Unlock vault'}</button>
         </form>
         <div className="auth-link-row">
-          <Link to="/device-request">Add this device</Link>
+          {bootstrapData?.bootstrap
+            ? <Link to="/setup">Create your account</Link>
+            : <Link to="/device-request">Add this device</Link>
+          }
         </div>
         <div className="encrypt-badge">
           <div className="encrypt-dot" />
