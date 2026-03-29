@@ -115,3 +115,42 @@ describe('auth.login', () => {
     await expect(caller.auth.login({ username: 'eve', passwordHash: 'wrong' })).rejects.toThrow()
   })
 })
+
+describe('auth.register isAdmin', () => {
+  it('creates a regular user by default', async () => {
+    const ctx = await makeAdminCtx()
+    const caller = createCaller(ctx)
+    const { userId } = await caller.auth.register({
+      username: 'regular',
+      email: 'regular@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })
+    const rows = await ctx.db.select().from((await import('../src/db/schema.js')).users)
+    const newUser = rows.find(u => u.id === userId)
+    expect(newUser?.isAdmin).toBe(false)
+  })
+
+  it('creates an admin user when isAdmin is true', async () => {
+    const ctx = await makeAdminCtx()
+    const caller = createCaller(ctx)
+    const { userId } = await caller.auth.register({
+      username: 'newadmin',
+      email: 'newadmin@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+      isAdmin: true,
+    })
+    const rows = await ctx.db.select().from((await import('../src/db/schema.js')).users)
+    const newUser = rows.find(u => u.id === userId)
+    expect(newUser?.isAdmin).toBe(true)
+  })
+})

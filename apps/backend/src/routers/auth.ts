@@ -29,6 +29,7 @@ export const authRouter = router({
       encryptedPrivateKey: z.string(),
       encryptedPersonalListKey: z.string(),
       encryptedPersonalListName: z.string(),
+      isAdmin: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const existing = await ctx.db.select().from(users).where(eq(users.username, input.username))
@@ -45,6 +46,7 @@ export const authRouter = router({
         kdfSalt: input.kdfSalt,
         encryptedPrivateKey: input.encryptedPrivateKey,
         encryptedPersonalListKey: input.encryptedPersonalListKey,
+        isAdmin: input.isAdmin ?? false,
         createdAt: now,
       })
       // Create the user's personal list + membership so lists.list() works immediately after login
