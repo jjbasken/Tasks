@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
+import { randomUUID } from 'crypto'
 import * as schema from '../src/db/schema.js'
 import { migrate } from '../src/db/migrate.js'
 import type { AppContext } from '../src/context.js'
@@ -14,4 +15,22 @@ export function makeTestDb() {
 
 export function makeCtx(userId: string | null = null): AppContext {
   return { db: makeTestDb(), userId }
+}
+
+export async function makeAdminCtx(): Promise<AppContext> {
+  const db = makeTestDb()
+  const userId = randomUUID()
+  await db.insert(schema.users).values({
+    id: userId,
+    username: 'admin',
+    email: 'admin@example.com',
+    passwordHash: 'hash',
+    publicKey: 'pk',
+    kdfSalt: 'salt',
+    encryptedPrivateKey: '{}',
+    encryptedPersonalListKey: '{}',
+    isAdmin: true,
+    createdAt: Date.now(),
+  })
+  return { db, userId }
 }

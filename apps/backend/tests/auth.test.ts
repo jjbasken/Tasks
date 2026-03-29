@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'bun:test'
 import { createCallerFactory } from '@trpc/server/unstable-core-do-not-import'
 import { appRouter } from '../src/router.js'
-import { makeCtx } from './helpers.js'
+import { makeCtx, makeAdminCtx } from './helpers.js'
 
 const createCaller = createCallerFactory()(appRouter)
 
 describe('auth.register', () => {
   it('creates a user and returns userId', async () => {
-    const ctx = makeCtx()
+    const ctx = await makeAdminCtx()
     const caller = createCaller(ctx)
     const result = await caller.auth.register({
       username: 'alice',
@@ -17,12 +17,13 @@ describe('auth.register', () => {
       kdfSalt: 'salt-b64',
       encryptedPrivateKey: JSON.stringify({ ciphertext: 'ct', nonce: 'n' }),
       encryptedPersonalListKey: JSON.stringify({ ciphertext: 'ct2', nonce: 'n2' }),
+      encryptedPersonalListName: JSON.stringify({ ciphertext: 'ct3', nonce: 'n3' }),
     })
     expect(result.userId).toBeString()
   })
 
   it('throws if username is already taken', async () => {
-    const ctx = makeCtx()
+    const ctx = await makeAdminCtx()
     const caller = createCaller(ctx)
     const payload = {
       username: 'bob',
@@ -32,15 +33,31 @@ describe('auth.register', () => {
       kdfSalt: 'salt',
       encryptedPrivateKey: '{}',
       encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
     }
     await caller.auth.register(payload)
     await expect(caller.auth.register({ ...payload, email: 'bob2@example.com' })).rejects.toThrow()
+  })
+
+  it('throws UNAUTHORIZED when called without admin context', async () => {
+    const ctx = makeCtx()
+    const caller = createCaller(ctx)
+    await expect(caller.auth.register({
+      username: 'x',
+      email: 'x@example.com',
+      passwordHash: 'h',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })).rejects.toThrow()
   })
 })
 
 describe('auth.getLoginChallenge', () => {
   it('returns kdfSalt and encrypted keys for a registered user', async () => {
-    const ctx = makeCtx()
+    const ctx = await makeAdminCtx()
     const caller = createCaller(ctx)
     await caller.auth.register({
       username: 'carol',
@@ -50,6 +67,7 @@ describe('auth.getLoginChallenge', () => {
       kdfSalt: 'my-salt',
       encryptedPrivateKey: '{"ciphertext":"c","nonce":"n"}',
       encryptedPersonalListKey: '{"ciphertext":"c2","nonce":"n2"}',
+      encryptedPersonalListName: '{"ciphertext":"c3","nonce":"n3"}',
     })
     const challenge = await caller.auth.getLoginChallenge({ username: 'carol' })
     expect(challenge.kdfSalt).toBe('my-salt')
@@ -65,7 +83,7 @@ describe('auth.getLoginChallenge', () => {
 
 describe('auth.login', () => {
   it('returns a token for valid credentials', async () => {
-    const ctx = makeCtx()
+    const ctx = await makeAdminCtx()
     const caller = createCaller(ctx)
     await caller.auth.register({
       username: 'dave',
@@ -75,13 +93,14 @@ describe('auth.login', () => {
       kdfSalt: 's',
       encryptedPrivateKey: '{}',
       encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
     })
     const result = await caller.auth.login({ username: 'dave', passwordHash: 'secret' })
     expect(result.token).toBeString()
   })
 
   it('throws UNAUTHORIZED for wrong password', async () => {
-    const ctx = makeCtx()
+    const ctx = await makeAdminCtx()
     const caller = createCaller(ctx)
     await caller.auth.register({
       username: 'eve',
@@ -91,6 +110,7 @@ describe('auth.login', () => {
       kdfSalt: 's',
       encryptedPrivateKey: '{}',
       encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
     })
     await expect(caller.auth.login({ username: 'eve', passwordHash: 'wrong' })).rejects.toThrow()
   })
