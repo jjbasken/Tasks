@@ -11,7 +11,7 @@ type AuthContextType = {
   isLoggedIn: boolean
   isAdmin: boolean
   login: (username: string, passphrase: string) => Promise<void>
-  register: (username: string, email: string, passphrase: string) => Promise<void>
+  register: (username: string, email: string, passphrase: string, isAdmin?: boolean) => Promise<void>
   logout: () => void
 }
 
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoggedIn(true)
   }
 
-  async function register(username: string, email: string, passphrase: string) {
+  async function register(username: string, email: string, passphrase: string, isAdmin = false) {
     await initCrypto()
     const kdfSalt = generateKdfSalt()
     const stretchKey = await deriveStretchKey(passphrase, kdfSalt)
@@ -57,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       encryptedPrivateKey: JSON.stringify(encPrivKey),
       encryptedPersonalListKey: JSON.stringify(encListKey),
       encryptedPersonalListName: JSON.stringify(encListName),
+      isAdmin,
     })
   }
 
