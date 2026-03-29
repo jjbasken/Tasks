@@ -13,8 +13,8 @@ export const usersRouter = router({
     }),
 
   me: protectedProcedure.query(async ({ ctx }) => {
-    const [user] = await ctx.db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, ctx.userId))
-    return { isAdmin: user?.isAdmin ?? false }
+    const [user] = await ctx.db.select({ id: users.id, isAdmin: users.isAdmin }).from(users).where(eq(users.id, ctx.userId))
+    return { id: user?.id ?? null, isAdmin: user?.isAdmin ?? false }
   }),
 
   list: adminProcedure.query(async ({ ctx }) => {
