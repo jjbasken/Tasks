@@ -6,18 +6,24 @@ function getSecret() {
   return new TextEncoder().encode(s)
 }
 
-export async function signToken(userId: string): Promise<string> {
-  return new SignJWT({ sub: userId })
+export async function signToken(userId: string, deviceId?: string): Promise<string> {
+  const payload: Record<string, string> = { sub: userId }
+  if (deviceId) payload.did = deviceId
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('30d')
+    .setExpirationTime('24h')
     .sign(getSecret())
 }
 
-export async function verifyToken(token: string): Promise<string | null> {
+export async function verifyToken(token: string): Promise<{ userId: string; deviceId?: string } | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret())
-    return payload.sub ?? null
+    if (!payload.sub) return null
+    return {
+      userId: payload.sub,
+      deviceId: typeof payload.did === 'string' ? payload.did : undefined,
+    }
   } catch {
     return null
   }

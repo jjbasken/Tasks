@@ -41,7 +41,7 @@ export const devicesRouter = router({
         if (!device || device.status !== 'approved' || !device.sealedUserPrivateKey) return null
         // Clear the pendingToken so it cannot be reused
         await tx.update(devices).set({ pendingToken: null }).where(eq(devices.id, input.deviceId))
-        const token = await signToken(device.userId)
+        const token = await signToken(device.userId, device.id)
         return { token, sealedUserPrivateKey: device.sealedUserPrivateKey }
       })
     }),

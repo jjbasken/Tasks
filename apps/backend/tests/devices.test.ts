@@ -13,6 +13,33 @@ async function seedUser(db: ReturnType<typeof makeTestDb>) {
   return userId
 }
 
+import { createContext } from '../src/context.js'
+
+describe('devices.revoke — token invalidation', () => {
+  it('revoked device token is rejected by createContext', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const anonCaller = createCaller({ db, userId: null })
+    const authedCaller = createCaller({ db, userId })
+
+    const { deviceId, pendingToken } = await anonCaller.devices.requestApproval({ username: 'u', name: 'Test', devicePublicKey: 'pk' })
+    await authedCaller.devices.approve({ deviceId, sealedUserPrivateKey: 'sealed' })
+    const result = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
+    const token = result!.token
+
+    // Verify token works before revocation
+    const ctxBefore = await createContext({ req: new Request('http://localhost', { headers: { authorization: `Bearer ${token}` } }) }, db)
+    expect(ctxBefore.userId).toBe(userId)
+
+    // Revoke the device
+    await authedCaller.devices.revoke({ deviceId })
+
+    // Verify token no longer works after revocation
+    const ctxAfter = await createContext({ req: new Request('http://localhost', { headers: { authorization: `Bearer ${token}` } }) }, db)
+    expect(ctxAfter.userId).toBeNull()
+  })
+})
+
 describe('devices.requestApproval', () => {
   it('creates a pending device and returns pendingToken', async () => {
     const db = makeTestDb()
