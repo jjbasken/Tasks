@@ -35,6 +35,18 @@ export async function deriveStretchKey(passphrase: string, saltB64: string): Pro
   )
 }
 
+/**
+ * Derive a server authentication token from the stretch key.
+ * This is sent to the server as `passwordHash` instead of the raw passphrase.
+ * The passphrase itself never leaves the browser.
+ * Uses BLAKE2b with a "server-auth" context key.
+ */
+export function deriveServerPassword(stretchKey: Uint8Array): string {
+  const context = sodium.from_string('server-auth')
+  const token = sodium.crypto_generichash(32, stretchKey, context)
+  return toBase64(token)
+}
+
 /** Generate a curve25519 keypair. Returns base64 strings for storage. */
 export function generateKeypair(): { publicKey: string; privateKey: string } {
   const kp = sodium.crypto_box_keypair()

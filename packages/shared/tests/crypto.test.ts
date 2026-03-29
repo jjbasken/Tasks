@@ -3,6 +3,7 @@ import {
   initCrypto,
   generateKdfSalt,
   deriveStretchKey,
+  deriveServerPassword,
   generateKeypair,
   generateListKey,
   encryptSymmetric,
@@ -68,6 +69,32 @@ describe('sealToPublicKey / openSeal', () => {
     const sealed = sealToPublicKey(data, kp.publicKey)
     const opened = openSeal(sealed, kp.publicKey, kp.privateKey)
     expect(new TextDecoder().decode(opened)).toBe('secret key material')
+  })
+})
+
+describe('deriveServerPassword', () => {
+  it('returns a base64 string of length > 0', async () => {
+    const salt = generateKdfSalt()
+    const stretchKey = await deriveStretchKey('mypassphrase', salt)
+    const serverPassword = deriveServerPassword(stretchKey)
+    expect(serverPassword).toBeString()
+    expect(serverPassword.length).toBeGreaterThan(0)
+  })
+
+  it('is deterministic for the same stretchKey', async () => {
+    const salt = generateKdfSalt()
+    const stretchKey = await deriveStretchKey('mypassphrase', salt)
+    const a = deriveServerPassword(stretchKey)
+    const b = deriveServerPassword(stretchKey)
+    expect(a).toBe(b)
+  })
+
+  it('differs from the stretchKey itself', async () => {
+    const salt = generateKdfSalt()
+    const stretchKey = await deriveStretchKey('mypassphrase', salt)
+    const serverPassword = deriveServerPassword(stretchKey)
+    const stretchKeyB64 = btoa(String.fromCharCode(...stretchKey))
+    expect(serverPassword).not.toBe(stretchKeyB64)
   })
 })
 

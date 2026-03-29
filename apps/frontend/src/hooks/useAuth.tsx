@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { session } from '../lib/session.js'
 import { trpc } from '../lib/trpc.js'
 import {
-  initCrypto, generateKdfSalt, deriveStretchKey, generateKeypair,
+  initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair,
   generateListKey, encryptSymmetric, decryptSymmetric,
   type EncryptedBlob,
 } from '@tasks/shared'
@@ -28,7 +28,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stretchKey = await deriveStretchKey(passphrase, challenge.kdfSalt)
     const encPrivKey: EncryptedBlob = JSON.parse(challenge.encryptedPrivateKey)
     const privateKeyB64 = decryptSymmetric(encPrivKey, stretchKey)
-    const result = await utils.client.auth.login.mutate({ username, passwordHash: passphrase })
+    const serverPassword = deriveServerPassword(stretchKey)
+    const result = await utils.client.auth.login.mutate({ username, passwordHash: serverPassword })
     session.setToken(result.token)
     const userInfo = await utils.users.search.fetch({ username })
     session.setStretchKey(stretchKey)
@@ -49,9 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const encPrivKey = encryptSymmetric(privateKey, stretchKey)
     const encListKey = encryptSymmetric(listKey, stretchKey)
     const encListName = encryptSymmetric('Personal', stretchKey)
+    const serverPassword = deriveServerPassword(stretchKey)
     await utils.client.auth.register.mutate({
       username, email,
-      passwordHash: passphrase,
+      passwordHash: serverPassword,
       publicKey,
       kdfSalt,
       encryptedPrivateKey: JSON.stringify(encPrivKey),
