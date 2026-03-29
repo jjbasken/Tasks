@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, count } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { router, publicProcedure, protectedProcedure } from '../router.js'
@@ -8,10 +8,15 @@ import { signToken } from '../lib/jwt.js'
 
 export const devicesRouter = router({
   requestApproval: publicProcedure
-    .input(z.object({ username: z.string(), name: z.string(), devicePublicKey: z.string() }))
+    .input(z.object({ username: z.string(), name: z.string().max(100), devicePublicKey: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
       if (!user) throw new TRPCError({ code: 'NOT_FOUND' })
+      const [{ value: pendingCount }] = await ctx.db
+        .select({ value: count() })
+        .from(devices)
+        .where(and(eq(devices.userId, user.id), eq(devices.status, 'pending')))
+      if (pendingCount >= 5) throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many pending device requests' })
       const id = randomUUID()
       const pendingToken = randomUUID()
       await ctx.db.insert(devices).values({ id, userId: user.id, publicKey: input.devicePublicKey, name: input.name, status: 'pending', pendingToken, createdAt: Date.now() })

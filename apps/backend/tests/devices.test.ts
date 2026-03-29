@@ -40,6 +40,24 @@ describe('devices.revoke — token invalidation', () => {
   })
 })
 
+describe('devices.requestApproval rate limit', () => {
+  it('rejects when user already has 5 pending device requests', async () => {
+    const db = makeTestDb()
+    await seedUser(db)
+    const caller = createCaller({ db, userId: null })
+
+    // Submit 5 pending requests
+    for (let i = 0; i < 5; i++) {
+      await caller.devices.requestApproval({ username: 'u', name: `device-${i}`, devicePublicKey: `pk${i}` })
+    }
+
+    // 6th request should fail
+    await expect(
+      caller.devices.requestApproval({ username: 'u', name: 'overflow', devicePublicKey: 'pkX' })
+    ).rejects.toThrow()
+  })
+})
+
 describe('devices.requestApproval', () => {
   it('creates a pending device and returns pendingToken', async () => {
     const db = makeTestDb()
