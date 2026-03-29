@@ -10,7 +10,9 @@ migrate(db)
 
 const app = new Hono()
 
-app.use('/api/*', cors({ origin: process.env.CORS_ORIGIN ?? '*', credentials: true }))
+const corsOrigin = process.env.CORS_ORIGIN
+if (!corsOrigin) throw new Error('CORS_ORIGIN environment variable must be set')
+app.use('/api/*', cors({ origin: corsOrigin, credentials: true }))
 
 app.all('/api/trpc/*', c =>
   fetchRequestHandler({
