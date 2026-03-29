@@ -1,19 +1,17 @@
-FROM node:20-alpine AS builder
+FROM oven/bun:1 AS builder
 WORKDIR /app
 
-RUN npm install -g pnpm
-
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json bun.lock ./
 COPY apps/frontend/package.json ./apps/frontend/
 COPY packages/shared/package.json ./packages/shared/
-RUN pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 COPY apps/frontend/ ./apps/frontend/
 COPY packages/shared/ ./packages/shared/
 COPY tsconfig.base.json ./
 
 WORKDIR /app/apps/frontend
-RUN pnpm exec vite build
+RUN bun run vite build
 
 FROM nginx:alpine AS runner
 COPY --from=builder /app/apps/frontend/dist /usr/share/nginx/html
