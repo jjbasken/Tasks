@@ -12,6 +12,7 @@ export function ListsPage() {
   const createList = trpc.lists.create.useMutation({ onSuccess: () => refetch() })
   const inviteMutation = trpc.lists.invite.useMutation({ onSuccess: () => refetch() })
 
+  const utils = trpc.useUtils()
   const [newListName, setNewListName] = useState('')
   const [activeListId] = useState<string>('')
   const [inviteListId, setInviteListId] = useState<string | null>(null)
@@ -39,7 +40,7 @@ export function ListsPage() {
       const stretchKey = session.getStretchKey()
       if (!stretchKey) return
       const listKeyB64 = decryptSymmetric(JSON.parse(list.encryptedListKey), stretchKey)
-      const invitee = await trpc.users.search.fetch({ username: inviteUsername })
+      const invitee = await utils.users.search.fetch({ username: inviteUsername })
       if (!invitee) { setError('User not found'); return }
       const sealedKey = sealToPublicKey(fromBase64(listKeyB64), invitee.publicKey)
       await inviteMutation.mutateAsync({ listId: inviteListId, inviteeUsername: inviteUsername, encryptedListKey: sealedKey })
