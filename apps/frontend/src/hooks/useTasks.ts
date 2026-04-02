@@ -48,6 +48,11 @@ export function useCreateTask(listId: string) {
         { id: tempId, listId, encryptedPayload, createdAt: now, updatedAt: now },
       ])
 
+      if (!navigator.onLine) {
+        offlineQueue.add({ type: 'create', listId, encryptedPayload })
+        return { id: tempId }
+      }
+
       try {
         const result = await mutation.mutateAsync({ listId, encryptedPayload })
         await utils.tasks.list.invalidate({ listId })
@@ -87,6 +92,11 @@ export function useUpdateTask(listId: string) {
       utils.tasks.list.setData({ listId }, (old) =>
         old?.map(t => t.id === taskId ? { ...t, encryptedPayload, updatedAt: Date.now() } : t)
       )
+
+      if (!navigator.onLine) {
+        offlineQueue.add({ type: 'update', listId, taskId, encryptedPayload })
+        return
+      }
 
       try {
         await mutation.mutateAsync({ taskId, encryptedPayload })
