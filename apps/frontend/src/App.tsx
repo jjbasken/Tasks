@@ -13,6 +13,7 @@ import { ListsPage } from './routes/ListsPage.js'
 import { DevicesPage } from './routes/DevicesPage.js'
 import { SettingsPage } from './routes/SettingsPage.js'
 import { RequestDevicePage } from './routes/RequestDevicePage.js'
+import { OfflineBanner } from './components/OfflineBanner.js'
 
 function AdminRoute({ children }: { children: ReactNode }) {
   const { isAdmin } = useAuth()
@@ -26,6 +27,7 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <BrowserRouter>
+            <OfflineBanner />
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/setup" element={<RegisterPage />} />

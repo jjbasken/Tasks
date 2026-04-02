@@ -40,6 +40,56 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ─── OFFLINE BANNER ─────────────────────────────────── */
+.offline-banner {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(248,113,113,0.3);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--danger);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  animation: offline-fade-in 0.2s ease;
+}
+
+.offline-banner--syncing {
+  border-color: rgba(251,191,36,0.3);
+  color: var(--warning);
+}
+
+.offline-banner-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+.offline-banner-dot--syncing {
+  background: var(--warning);
+  animation: offline-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes offline-fade-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes offline-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
 /* ─── AUTH ───────────────────────────────────────────── */
 .auth-page {
   min-height: 100vh;
