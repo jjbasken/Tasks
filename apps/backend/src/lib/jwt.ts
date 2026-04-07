@@ -12,7 +12,7 @@ export async function signToken(userId: string, deviceId?: string): Promise<stri
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime('100y')
     .sign(getSecret())
 }
 

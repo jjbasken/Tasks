@@ -1,5 +1,5 @@
-// Key material lives in sessionStorage — survives page reloads within the same tab,
-// cleared when the tab closes. Explicitly cleared on logout.
+// Key material lives in localStorage — survives tab/app closes.
+// Explicitly cleared on logout.
 
 const KEYS = {
   token: 'tasks:token',
@@ -10,24 +10,35 @@ const KEYS = {
 } as const
 
 export const session = {
-  setToken: (t: string) => sessionStorage.setItem(KEYS.token, t),
-  getToken: () => sessionStorage.getItem(KEYS.token),
+  setToken: (t: string) => localStorage.setItem(KEYS.token, t),
+  getToken: () => {
+    const token = localStorage.getItem(KEYS.token)
+    if (!token) return null
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        Object.values(KEYS).forEach(k => localStorage.removeItem(k))
+        return null
+      }
+    } catch { /* malformed token */ }
+    return token
+  },
 
-  setStretchKey: (k: Uint8Array) => sessionStorage.setItem(KEYS.stretchKey, btoa(String.fromCharCode(...k))),
+  setStretchKey: (k: Uint8Array) => localStorage.setItem(KEYS.stretchKey, btoa(String.fromCharCode(...k))),
   getStretchKey: (): Uint8Array | null => {
-    const v = sessionStorage.getItem(KEYS.stretchKey)
+    const v = localStorage.getItem(KEYS.stretchKey)
     if (!v) return null
     return Uint8Array.from(atob(v), c => c.charCodeAt(0))
   },
 
-  setPrivateKey: (k: string) => sessionStorage.setItem(KEYS.privateKey, k),
-  getPrivateKey: () => sessionStorage.getItem(KEYS.privateKey),
+  setPrivateKey: (k: string) => localStorage.setItem(KEYS.privateKey, k),
+  getPrivateKey: () => localStorage.getItem(KEYS.privateKey),
 
-  setPublicKey: (k: string) => sessionStorage.setItem(KEYS.publicKey, k),
-  getPublicKey: () => sessionStorage.getItem(KEYS.publicKey),
+  setPublicKey: (k: string) => localStorage.setItem(KEYS.publicKey, k),
+  getPublicKey: () => localStorage.getItem(KEYS.publicKey),
 
-  setIsAdmin: (v: boolean) => sessionStorage.setItem(KEYS.isAdmin, v ? '1' : '0'),
-  getIsAdmin: () => sessionStorage.getItem(KEYS.isAdmin) === '1',
+  setIsAdmin: (v: boolean) => localStorage.setItem(KEYS.isAdmin, v ? '1' : '0'),
+  getIsAdmin: () => localStorage.getItem(KEYS.isAdmin) === '1',
 
-  clear: () => Object.values(KEYS).forEach(k => sessionStorage.removeItem(k)),
+  clear: () => Object.values(KEYS).forEach(k => localStorage.removeItem(k)),
 }
