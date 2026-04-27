@@ -49,6 +49,7 @@ export function TasksPage() {
   const createTask = useCreateTask(currentListId)
   const clearDone = useClearDone(currentListId)
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set())
+  const [isUncheckingAll, setIsUncheckingAll] = useState(false)
 
   useEffect(() => {
     if (!listKeyB64) return
@@ -93,6 +94,21 @@ export function TasksPage() {
     }
   }
 
+  async function handleUncheckAll() {
+    if (!listKeyB64 || isUncheckingAll) return
+    const doneTasks = tasks.filter(t => t.status === 'done')
+    if (doneTasks.length === 0) return
+    if (!window.confirm(`Mark all ${doneTasks.length} done task${doneTasks.length === 1 ? '' : 's'} as unchecked?`)) return
+    setIsUncheckingAll(true)
+    try {
+      await Promise.all(doneTasks.map(task =>
+        updateTask.mutateAsync(task.id, { ...task, status: 'active', completed_at: null }, listKeyB64)
+      ))
+    } finally {
+      setIsUncheckingAll(false)
+    }
+  }
+
   return (
     <div className="app-layout">
       <Sidebar activeListId={currentListId} onSelectList={setActiveListId} />
@@ -113,15 +129,24 @@ export function TasksPage() {
             </button>
           )}
           {tab === 'done' && (
-            <button
-              className="add-task-btn"
-              onClick={() => {
-                const doneIds = tasks.filter(t => t.status === 'done').map(t => t.id)
-                if (doneIds.length > 0) clearDone.mutate({ listId: currentListId, taskIds: doneIds })
-              }}
-            >
-              Clear done
-            </button>
+            <>
+              <button
+                className="add-task-btn"
+                onClick={handleUncheckAll}
+                disabled={isUncheckingAll}
+              >
+                Uncheck all
+              </button>
+              <button
+                className="add-task-btn"
+                onClick={() => {
+                  const doneIds = tasks.filter(t => t.status === 'done').map(t => t.id)
+                  if (doneIds.length > 0) clearDone.mutate({ listId: currentListId, taskIds: doneIds })
+                }}
+              >
+                Clear done
+              </button>
+            </>
           )}
         </div>
         <div className="task-list-area">
