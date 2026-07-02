@@ -10,6 +10,8 @@ export const users = sqliteTable('users', {
   encryptedPrivateKey: text('encrypted_private_key').notNull(),
   encryptedPersonalListKey: text('encrypted_personal_list_key').notNull(),
   isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
+  // Bumped to invalidate all outstanding tokens for this user (logout-everywhere / admin revoke).
+  tokenVersion: integer('token_version').notNull().default(0),
   createdAt: integer('created_at').notNull(),
 })
 

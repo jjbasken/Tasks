@@ -23,6 +23,7 @@ export function RegisterPage() {
   const setAdminMutation = trpc.users.setAdmin.useMutation({
     onSettled: () => utils.users.list.invalidate(),
   })
+  const revokeSessionsMutation = trpc.users.revokeSessions.useMutation()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -101,6 +102,7 @@ export function RegisterPage() {
                 <th style={{ textAlign: 'left', padding: '8px 4px', color: 'var(--text-muted)', fontWeight: 500 }}>Email</th>
                 <th style={{ textAlign: 'left', padding: '8px 4px', color: 'var(--text-muted)', fontWeight: 500 }}>Role</th>
                 <th style={{ textAlign: 'left', padding: '8px 4px', color: 'var(--text-muted)', fontWeight: 500 }}>Joined</th>
+                <th style={{ textAlign: 'left', padding: '8px 4px', color: 'var(--text-muted)', fontWeight: 500 }}>Sessions</th>
               </tr>
             </thead>
             <tbody>
@@ -131,6 +133,28 @@ export function RegisterPage() {
                     </td>
                     <td style={{ padding: '8px 4px', color: 'var(--text-muted)' }}>
                       {new Date(user.createdAt).toLocaleDateString()}
+                    </td>
+                    <td style={{ padding: '8px 4px' }}>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Revoke all sessions for ${user.username}? They will be signed out on every device and must log in again.`)) {
+                            revokeSessionsMutation.mutate({ userId: user.id })
+                          }
+                        }}
+                        disabled={revokeSessionsMutation.isPending}
+                        style={{
+                          padding: '2px 10px',
+                          borderRadius: 4,
+                          border: '1px solid var(--border)',
+                          background: 'transparent',
+                          color: 'var(--danger, #c0392b)',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                        }}
+                        title="Sign this user out of all devices"
+                      >
+                        Revoke
+                      </button>
                     </td>
                   </tr>
                 )

@@ -80,3 +80,28 @@ describe('users.setAdmin', () => {
     await expect(caller.users.setAdmin({ userId, isAdmin: true })).rejects.toThrow()
   })
 })
+
+describe('users.revokeSessions', () => {
+  it('bumps the target user tokenVersion, invalidating outstanding tokens', async () => {
+    const ctx = await makeAdminCtx()
+    const { userId } = await registerUser(ctx, 'grace')
+    const [before] = await ctx.db.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, userId))
+    const caller = createCaller(ctx)
+    await caller.users.revokeSessions({ userId })
+    const [after] = await ctx.db.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, userId))
+    expect(after.tokenVersion).toBe(before.tokenVersion + 1)
+  })
+
+  it('throws NOT_FOUND for an unknown user', async () => {
+    const ctx = await makeAdminCtx()
+    const caller = createCaller(ctx)
+    await expect(caller.users.revokeSessions({ userId: 'does-not-exist' })).rejects.toThrow()
+  })
+
+  it('throws FORBIDDEN for non-admin', async () => {
+    const adminCtx = await makeAdminCtx()
+    const { userId } = await registerUser(adminCtx, 'heidi')
+    const caller = createCaller({ db: adminCtx.db, userId })
+    await expect(caller.users.revokeSessions({ userId })).rejects.toThrow()
+  })
+})

@@ -36,4 +36,16 @@ export const usersRouter = router({
       await ctx.db.update(users).set({ isAdmin: input.isAdmin }).where(eq(users.id, input.userId))
       return { ok: true }
     }),
+
+  // Revoke all of a user's outstanding tokens by bumping their tokenVersion.
+  // Every existing session (password logins and approved devices) is invalidated;
+  // the user must log in again, and paired devices must be re-approved.
+  revokeSessions: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [user] = await ctx.db.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, input.userId))
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND' })
+      await ctx.db.update(users).set({ tokenVersion: user.tokenVersion + 1 }).where(eq(users.id, input.userId))
+      return { ok: true }
+    }),
 })

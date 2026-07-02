@@ -1,10 +1,18 @@
 import { TRPCError } from '@trpc/server'
 import { eq, count } from 'drizzle-orm'
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
+import { randomUUID, createHmac } from 'crypto'
 import { router, publicProcedure, protectedProcedure, bootstrapOrAdminProcedure } from '../trpc.js'
 import { users, lists, listMemberships } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
+
+// Deterministic decoy salt for unknown usernames so the pre-auth challenge does not
+// reveal which accounts exist. Same shape as generateKdfSalt (16 bytes, base64).
+function decoyKdfSalt(username: string): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) throw new Error('JWT_SECRET env var not set')
+  return createHmac('sha256', secret).update(`kdf-salt:${username}`).digest().subarray(0, 16).toString('base64')
+}
 
 export const authRouter = router({
   isBootstrap: publicProcedure.query(async ({ ctx }) => {
@@ -15,13 +23,11 @@ export const authRouter = router({
   getLoginChallenge: publicProcedure
     .input(z.object({ username: z.string() }))
     .query(async ({ ctx, input }) => {
-      const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
-      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid credentials' })
-      return {
-        kdfSalt: user.kdfSalt,
-        encryptedPrivateKey: user.encryptedPrivateKey,
-        encryptedPersonalListKey: user.encryptedPersonalListKey,
-      }
+      const [user] = await ctx.db.select({ kdfSalt: users.kdfSalt }).from(users).where(eq(users.username, input.username))
+      // Return only the KDF salt (needed to derive the login key). Encrypted key
+      // material is handed out by `login`, after the password has been verified.
+      // Unknown usernames receive a stable decoy salt to prevent account enumeration.
+      return { kdfSalt: user?.kdfSalt ?? decoyKdfSalt(input.username) }
     }),
 
   register: bootstrapOrAdminProcedure
@@ -71,8 +77,12 @@ export const authRouter = router({
       if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' })
       const valid = await Bun.password.verify(input.passwordHash, user.passwordHash)
       if (!valid) throw new TRPCError({ code: 'UNAUTHORIZED' })
-      const token = await signToken(user.id)
-      return { token }
+      const token = await signToken(user.id, user.tokenVersion)
+      return {
+        token,
+        encryptedPrivateKey: user.encryptedPrivateKey,
+        encryptedPersonalListKey: user.encryptedPersonalListKey,
+      }
     }),
 
   logout: protectedProcedure.mutation(() => {

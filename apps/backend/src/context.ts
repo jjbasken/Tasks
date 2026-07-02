@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { verifyToken } from './lib/jwt.js'
 import { db as defaultDb, type Db } from './db/index.js'
-import { devices } from './db/schema.js'
+import { devices, users } from './db/schema.js'
 
 export type AppContext = {
   db: Db
@@ -16,6 +16,14 @@ export async function createContext({ req }: { req: Request }, dbOverride?: Db):
 
   const tokenData = await verifyToken(token)
   if (!tokenData) return { db, userId: null }
+
+  // Verify the user still exists and the token has not been revoked. A user's
+  // tokenVersion is bumped on logout-everywhere / admin revoke, which invalidates
+  // every outstanding token for that user (including non-device password logins).
+  const [user] = await db.select({ tokenVersion: users.tokenVersion })
+    .from(users)
+    .where(eq(users.id, tokenData.userId))
+  if (!user || user.tokenVersion !== tokenData.tokenVersion) return { db, userId: null }
 
   // If the token was issued for a specific device, verify the device is still approved
   if (tokenData.deviceId) {

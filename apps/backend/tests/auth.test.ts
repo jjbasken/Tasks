@@ -67,7 +67,7 @@ describe('auth.register', () => {
 })
 
 describe('auth.getLoginChallenge', () => {
-  it('returns kdfSalt and encrypted keys for a registered user', async () => {
+  it('returns only the kdfSalt for a registered user (no encrypted key material)', async () => {
     const ctx = await makeAdminCtx()
     const caller = createCaller(ctx)
     await caller.auth.register({
@@ -82,18 +82,18 @@ describe('auth.getLoginChallenge', () => {
     })
     const challenge = await caller.auth.getLoginChallenge({ username: 'carol' })
     expect(challenge.kdfSalt).toBe('my-salt')
-    expect(challenge.encryptedPrivateKey).toBeString()
+    // Encrypted key material must NOT be exposed pre-authentication.
+    expect((challenge as any).encryptedPrivateKey).toBeUndefined()
   })
 
-  it('throws UNAUTHORIZED (not NOT_FOUND) for unknown username', async () => {
+  it('returns a stable decoy salt for unknown usernames (no enumeration oracle)', async () => {
     const ctx = makeCtx()
     const caller = createCaller(ctx)
-    try {
-      await caller.auth.getLoginChallenge({ username: 'nobody' })
-      expect(true).toBe(false) // should not reach here
-    } catch (err: any) {
-      expect(err.code).toBe('UNAUTHORIZED')
-    }
+    // Must not throw / must not distinguish unknown users from known ones.
+    const first = await caller.auth.getLoginChallenge({ username: 'nobody' })
+    const second = await caller.auth.getLoginChallenge({ username: 'nobody' })
+    expect(first.kdfSalt).toBeString()
+    expect(first.kdfSalt).toBe(second.kdfSalt) // deterministic per username
   })
 })
 
@@ -113,6 +113,9 @@ describe('auth.login', () => {
     })
     const result = await caller.auth.login({ username: 'dave', passwordHash: 'secret' })
     expect(result.token).toBeString()
+    // Encrypted key material is delivered here, after password verification.
+    expect(result.encryptedPrivateKey).toBeString()
+    expect(result.encryptedPersonalListKey).toBeString()
   })
 
   it('throws UNAUTHORIZED for wrong password', async () => {
