@@ -65,7 +65,7 @@ export const authRouter = router({
       })
       // Create the user's personal list + membership so lists.list() works immediately after login
       const listId = randomUUID()
-      await ctx.db.insert(lists).values({ id: listId, ownerId: userId, encryptedName: input.encryptedPersonalListName, isShared: false, createdAt: now })
+      await ctx.db.insert(lists).values({ id: listId, ownerId: userId, encryptedName: input.encryptedPersonalListName, isShared: false, isPersonal: true, createdAt: now })
       await ctx.db.insert(listMemberships).values({ id: randomUUID(), listId, userId, encryptedListKey: input.encryptedPersonalListKey, invitedBy: null, createdAt: now })
       return { userId }
     }),

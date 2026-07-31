@@ -45,6 +45,19 @@ export function migrate(db: Db) {
   `)
   try { sqlite.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`) } catch {}
   try { sqlite.run(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`) } catch {}
+  try {
+    sqlite.run(`ALTER TABLE lists ADD COLUMN is_personal INTEGER NOT NULL DEFAULT 0`)
+    // Backfill: each user's oldest owned list is their personal list. Runs only on the
+    // migration that adds the column, so later user changes are never overwritten.
+    sqlite.run(`
+      UPDATE lists SET is_personal = 1 WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY owner_id ORDER BY created_at, id) AS rn
+          FROM lists
+        ) WHERE rn = 1
+      )
+    `)
+  } catch {}
   sqlite.run(`
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,

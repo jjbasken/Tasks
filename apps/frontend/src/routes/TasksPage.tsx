@@ -4,7 +4,7 @@ import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
 import { useListsList } from '../hooks/useLists.js'
-import { useTaskList, useUpdateTask, useCreateTask, useClearDone, type DecryptedTask } from '../hooks/useTasks.js'
+import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import { session } from '../lib/session.js'
 import type { TaskPayload } from '@tasks/shared'
 import { nextOccurrence, decryptSymmetric, openSeal, fromBase64 } from '@tasks/shared'
@@ -35,8 +35,11 @@ export function TasksPage() {
   const [searchParams] = useSearchParams()
   const [activeListId, setActiveListId] = useState<string | null>(() => searchParams.get('listId'))
 
-  const personalList = lists?.[0] ?? null
-  const currentListId = activeListId ?? personalList?.id ?? ''
+  const personalList = lists?.find(l => l.isPersonal) ?? lists?.[0] ?? null
+  // A deleted or left list can linger in state or in a ?listId= URL; fall back rather
+  // than querying a list the server will now reject.
+  const activeStillExists = !!activeListId && !!lists?.some(l => l.id === activeListId)
+  const currentListId = (activeStillExists ? activeListId : personalList?.id) ?? ''
   const currentList = lists?.find(l => l.id === currentListId)
 
   const listKeyB64 = useMemo(() => {
@@ -48,6 +51,7 @@ export function TasksPage() {
   const updateTask = useUpdateTask(currentListId)
   const createTask = useCreateTask(currentListId)
   const clearDone = useClearDone(currentListId)
+  const deleteTask = useDeleteTask(currentListId)
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set())
   const [isUncheckingAll, setIsUncheckingAll] = useState(false)
 
@@ -92,6 +96,12 @@ export function TasksPage() {
     } finally {
       setCompletingIds(prev => { const s = new Set(prev); s.delete(task.id); return s })
     }
+  }
+
+  function handleDeleteTask(task: DecryptedTask) {
+    if (!window.confirm(`Delete "${task.title}"?`)) return
+    if (selectedTask?.id === task.id) setSelectedTask(null)
+    deleteTask.mutate({ taskId: task.id })
   }
 
   async function handleUncheckAll() {
@@ -150,7 +160,7 @@ export function TasksPage() {
           )}
         </div>
         <div className="task-list-area">
-          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} completingIds={completingIds} />
+          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
         </div>
       </div>
       {(selectedTask || showCreate) && (

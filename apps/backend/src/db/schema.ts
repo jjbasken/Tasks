@@ -20,6 +20,7 @@ export const lists = sqliteTable('lists', {
   ownerId: text('owner_id').notNull().references(() => users.id),
   encryptedName: text('encrypted_name').notNull(),
   isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(false),
+  isPersonal: integer('is_personal', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at').notNull(),
 })
 

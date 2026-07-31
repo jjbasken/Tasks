@@ -1,7 +1,12 @@
 import { describeRrule } from '@tasks/shared'
 import type { DecryptedTask } from '../hooks/useTasks.js'
 
-type Props = { task: DecryptedTask; onToggle: (task: DecryptedTask) => void; onClick: (task: DecryptedTask) => void }
+type Props = {
+  task: DecryptedTask
+  onToggle: (task: DecryptedTask) => void
+  onClick: (task: DecryptedTask) => void
+  onDelete?: (task: DecryptedTask) => void
+}
 
 function formatDueDate(due: string): string {
   const today = new Date().toISOString().split('T')[0]
@@ -11,7 +16,7 @@ function formatDueDate(due: string): string {
   return new Date(due + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export function TaskRow({ task, onToggle, onClick }: Props) {
+export function TaskRow({ task, onToggle, onClick, onDelete }: Props) {
   const isDone = task.status === 'done'
   const isOverdue = !isDone && !!task.due_date && task.due_date < new Date().toISOString().split('T')[0]
   return (
@@ -28,6 +33,15 @@ export function TaskRow({ task, onToggle, onClick }: Props) {
       )}
       {task.rrule && (
         <span className="task-recur-badge" title={describeRrule(task.rrule) ?? ''}>↻</span>
+      )}
+      {onDelete && (
+        <button
+          className="task-delete-btn"
+          onClick={e => { e.stopPropagation(); onDelete(task) }}
+          aria-label="Delete task"
+        >
+          🗑
+        </button>
       )}
     </div>
   )

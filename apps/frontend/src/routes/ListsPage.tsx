@@ -4,20 +4,26 @@ import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
 import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric } from '@tasks/shared'
 import { Sidebar } from '../components/Sidebar.js'
-import { useListsList } from '../hooks/useLists.js'
+import { useListsList, type DecryptedList } from '../hooks/useLists.js'
+import { useNetworkStatus } from '../hooks/useNetworkStatus.js'
 
 export function ListsPage() {
   const navigate = useNavigate()
   const { data: lists, refetch } = useListsList()
   const createList = trpc.lists.create.useMutation({ onSuccess: () => refetch() })
   const inviteMutation = trpc.lists.invite.useMutation({ onSuccess: () => refetch() })
+  const deleteMutation = trpc.lists.delete.useMutation({ onSuccess: () => refetch() })
+  const leaveMutation = trpc.lists.leave.useMutation({ onSuccess: () => refetch() })
 
   const utils = trpc.useUtils()
+  const isOnline = useNetworkStatus()
   const [newListName, setNewListName] = useState('')
   const [activeListId] = useState<string>('')
   const [inviteListId, setInviteListId] = useState<string | null>(null)
   const [inviteUsername, setInviteUsername] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [confirmList, setConfirmList] = useState<DecryptedList | null>(null)
+  const [confirmTaskCount, setConfirmTaskCount] = useState<number | null>(null)
 
   async function handleCreateList(e: React.FormEvent) {
     e.preventDefault()
@@ -51,6 +57,41 @@ export function ListsPage() {
     }
   }
 
+  function confirmMessage(list: DecryptedList, taskCount: number | null): string {
+    if (!list.isOwner) return "The list stays for other members; you'll lose access to it."
+    const audience = list.isShared ? ' for everyone on the list' : ''
+    if (taskCount === null) return `This permanently deletes the list and all of its tasks${audience}.`
+    if (taskCount === 0) return `This list has no tasks. Deleting it${audience} can't be undone.`
+    return `This permanently deletes ${taskCount} task${taskCount === 1 ? '' : 's'}${audience}.`
+  }
+
+  function openConfirm(list: DecryptedList) {
+    setError(null)
+    setConfirmTaskCount(null)
+    setConfirmList(list)
+    // Counting rows needs no decryption; a failure just falls back to vaguer wording.
+    utils.tasks.list.fetch({ listId: list.id })
+      .then(rows => setConfirmTaskCount(rows.length))
+      .catch(() => setConfirmTaskCount(null))
+  }
+
+  async function handleConfirm() {
+    if (!confirmList) return
+    setError(null)
+    try {
+      if (confirmList.isOwner) {
+        await deleteMutation.mutateAsync({ listId: confirmList.id })
+      } else {
+        await leaveMutation.mutateAsync({ listId: confirmList.id })
+      }
+      setConfirmList(null)
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not complete that')
+    }
+  }
+
+  const confirmPending = deleteMutation.isPending || leaveMutation.isPending
+
   return (
     <div className="app-layout">
       <Sidebar activeListId={activeListId} onSelectList={(id) => navigate(`/tasks?listId=${id}`)} />
@@ -74,11 +115,39 @@ export function ListsPage() {
                 {list.isShared && (
                   <button className="btn-accent-sm" onClick={() => setInviteListId(list.id)}>+ Invite</button>
                 )}
+                {!list.isPersonal && (
+                  <button
+                    className="btn-danger-sm"
+                    onClick={() => openConfirm(list)}
+                    disabled={!isOnline}
+                    title={isOnline ? undefined : 'Unavailable offline'}
+                  >
+                    {list.isOwner ? 'Delete' : 'Leave'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {confirmList && (
+        <div className="modal-backdrop" onClick={() => setConfirmList(null)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">
+              {confirmList.isOwner ? 'Delete' : 'Leave'} “{confirmList.name}”?
+            </div>
+            <div className="modal-body">{confirmMessage(confirmList, confirmTaskCount)}</div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-actions">
+              <button className="btn-danger" type="button" onClick={handleConfirm} disabled={confirmPending}>
+                {confirmPending ? 'Working…' : confirmList.isOwner ? 'Delete list' : 'Leave list'}
+              </button>
+              <button className="btn-secondary" type="button" onClick={() => setConfirmList(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {inviteListId && (
         <div className="modal-backdrop" onClick={() => setInviteListId(null)}>

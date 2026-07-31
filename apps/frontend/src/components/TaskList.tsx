@@ -6,10 +6,11 @@ type Props = {
   bucket: 'now' | 'later' | 'done'
   onToggle: (task: DecryptedTask) => void
   onClickTask: (task: DecryptedTask) => void
+  onDeleteTask?: (task: DecryptedTask) => void
   completingIds?: Set<string>
 }
 
-export function TaskList({ tasks, bucket, onToggle, onClickTask, completingIds }: Props) {
+export function TaskList({ tasks, bucket, onToggle, onClickTask, onDeleteTask, completingIds }: Props) {
   const filtered = tasks
     .filter(t => completingIds?.has(t.id) ? false : bucket === 'done' ? t.status === 'done' : t.status === 'active' && t.bucket === bucket)
     .sort((a, b) => {
@@ -22,7 +23,7 @@ export function TaskList({ tasks, bucket, onToggle, onClickTask, completingIds }
   return (
     <div>
       {filtered.map(task => (
-        <TaskRow key={task.id} task={task} onToggle={onToggle} onClick={onClickTask} />
+        <TaskRow key={task.id} task={task} onToggle={onToggle} onClick={onClickTask} onDelete={onDeleteTask} />
       ))}
     </div>
   )

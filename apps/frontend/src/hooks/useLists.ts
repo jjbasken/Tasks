@@ -6,6 +6,8 @@ export type DecryptedList = {
   id: string
   name: string
   isShared: boolean
+  isPersonal: boolean
+  isOwner: boolean
   encryptedListKey: string
 }
 
@@ -19,7 +21,7 @@ export function useListsList() {
           const parsed = JSON.parse(row.encryptedName)
           // Handle legacy unencrypted names (plain JSON strings stored pre-encryption)
           const name = typeof parsed === 'string' ? parsed : decryptSymmetric(parsed, stretchKey)
-          return [{ id: row.id, name, isShared: row.isShared, encryptedListKey: row.encryptedListKey }]
+          return [{ id: row.id, name, isShared: row.isShared, isPersonal: row.isPersonal, isOwner: row.isOwner, encryptedListKey: row.encryptedListKey }]
         } catch {
           return []
         }
@@ -38,6 +40,20 @@ export function useCreateList() {
 export function useInviteToList() {
   const utils = trpc.useUtils()
   return trpc.lists.invite.useMutation({
+    onSuccess: () => utils.lists.list.invalidate(),
+  })
+}
+
+export function useDeleteList() {
+  const utils = trpc.useUtils()
+  return trpc.lists.delete.useMutation({
+    onSuccess: () => utils.lists.list.invalidate(),
+  })
+}
+
+export function useLeaveList() {
+  const utils = trpc.useUtils()
+  return trpc.lists.leave.useMutation({
     onSuccess: () => utils.lists.list.invalidate(),
   })
 }

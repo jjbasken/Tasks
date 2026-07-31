@@ -129,6 +129,11 @@ export function useDeleteTask(listId: string) {
       const prev = utils.tasks.list.getData({ listId })
       utils.tasks.list.setData({ listId }, (old) => old?.filter(t => t.id !== taskId))
 
+      if (!navigator.onLine) {
+        offlineQueue.add({ type: 'delete', listId, taskId })
+        return
+      }
+
       mutation.mutate({ taskId }, {
         onSuccess: () => utils.tasks.list.invalidate({ listId }),
         onError: () => {
