@@ -1,11 +1,15 @@
 import { eq } from 'drizzle-orm'
 import { verifyToken } from './lib/jwt.js'
 import { db as defaultDb, type Db } from './db/index.js'
-import { devices, users } from './db/schema.js'
+import { devices, revokedTokens, users } from './db/schema.js'
 
 export type AppContext = {
   db: Db
   userId: string | null
+  // Present when the request carried a valid token. `logout` uses these to revoke
+  // exactly this session. Optional so test callers can build a bare context.
+  tokenId?: string | null
+  tokenExpiresAt?: number | null
 }
 
 export async function createContext({ req }: { req: Request }, dbOverride?: Db): Promise<AppContext> {
@@ -16,6 +20,13 @@ export async function createContext({ req }: { req: Request }, dbOverride?: Db):
 
   const tokenData = await verifyToken(token)
   if (!tokenData) return { db, userId: null }
+
+  // Reject tokens that were explicitly logged out. Unlike a tokenVersion bump this
+  // ends one session without signing the user out on their other devices.
+  const [revoked] = await db.select({ jti: revokedTokens.jti })
+    .from(revokedTokens)
+    .where(eq(revokedTokens.jti, tokenData.tokenId))
+  if (revoked) return { db, userId: null }
 
   // Verify the user still exists and the token has not been revoked. A user's
   // tokenVersion is bumped on logout-everywhere / admin revoke, which invalidates
@@ -33,5 +44,5 @@ export async function createContext({ req }: { req: Request }, dbOverride?: Db):
     if (!device || device.status !== 'approved') return { db, userId: null }
   }
 
-  return { db, userId: tokenData.userId }
+  return { db, userId: tokenData.userId, tokenId: tokenData.tokenId, tokenExpiresAt: tokenData.expiresAt }
 }

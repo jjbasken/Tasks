@@ -221,3 +221,65 @@ describe('auth.register isAdmin', () => {
     expect(newUser?.isAdmin).toBe(true)
   })
 })
+
+describe('auth.logout — session revocation', () => {
+  it('invalidates the calling token without touching other sessions', async () => {
+    const { createContext } = await import('../src/context.js')
+    const ctx = await makeAdminCtx()
+    const caller = createCaller(ctx)
+    await caller.auth.register({
+      username: 'frank',
+      email: 'frank@example.com',
+      passwordHash: 'pw',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })
+
+    // Two independent sessions for the same user
+    const a = await caller.auth.login({ username: 'frank', passwordHash: 'pw' })
+    const b = await caller.auth.login({ username: 'frank', passwordHash: 'pw' })
+    const ctxFor = (token: string) =>
+      createContext({ req: new Request('http://localhost', { headers: { authorization: `Bearer ${token}` } }) }, ctx.db)
+
+    const before = await ctxFor(a.token)
+    expect(before.userId).toBeString()
+
+    // Log out session A
+    await createCaller(await ctxFor(a.token)).auth.logout()
+
+    expect((await ctxFor(a.token)).userId).toBeNull()
+    // Session B is untouched — logout is per-session, not logout-everywhere.
+    expect((await ctxFor(b.token)).userId).toBeString()
+  })
+})
+
+describe('auth.login — account enumeration', () => {
+  it('fails the same way for unknown and wrong-password logins', async () => {
+    const ctx = await makeAdminCtx()
+    const caller = createCaller(ctx)
+    await caller.auth.register({
+      username: 'grace',
+      email: 'grace@example.com',
+      passwordHash: 'right',
+      publicKey: 'pk',
+      kdfSalt: 's',
+      encryptedPrivateKey: '{}',
+      encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}',
+    })
+
+    const codeOf = async (username: string) => {
+      try {
+        await caller.auth.login({ username, passwordHash: 'wrong' })
+        return 'OK'
+      } catch (err: any) {
+        return err.code ?? err.cause?.code ?? String(err)
+      }
+    }
+
+    expect(await codeOf('nobody-at-all')).toBe(await codeOf('grace'))
+  })
+})

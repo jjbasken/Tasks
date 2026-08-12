@@ -2,10 +2,18 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
-import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric } from '@tasks/shared'
+import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric, publicKeyFingerprint } from '@tasks/shared'
 import { Sidebar } from '../components/Sidebar.js'
 import { useListsList, type DecryptedList } from '../hooks/useLists.js'
 import { useNetworkStatus } from '../hooks/useNetworkStatus.js'
+import { checkPublicKey, pinPublicKey } from '../lib/keyPinning.js'
+
+type InviteCandidate = {
+  username: string
+  publicKey: string
+  fingerprint: string
+  firstContact: boolean
+}
 
 export function ListsPage() {
   const navigate = useNavigate()
@@ -21,6 +29,8 @@ export function ListsPage() {
   const [activeListId] = useState<string>('')
   const [inviteListId, setInviteListId] = useState<string | null>(null)
   const [inviteUsername, setInviteUsername] = useState('')
+  const [inviteCandidate, setInviteCandidate] = useState<InviteCandidate | null>(null)
+  const [inviting, setInviting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmList, setConfirmList] = useState<DecryptedList | null>(null)
   const [confirmTaskCount, setConfirmTaskCount] = useState<number | null>(null)
@@ -36,24 +46,66 @@ export function ListsPage() {
     setNewListName('')
   }
 
-  async function handleInvite(e: React.FormEvent) {
+  function closeInvite() {
+    setInviteListId(null)
+    setInviteCandidate(null)
+    setInviteUsername('')
+    setError(null)
+  }
+
+  // Step 1: look the invitee up, then stop. The public key comes from the server, so
+  // it gets checked against the pinned copy and shown as a fingerprint before any
+  // key material is sealed to it — a swapped key would otherwise silently hand the
+  // list contents to whoever supplied it.
+  async function handleLookup(e: React.FormEvent) {
     e.preventDefault()
     if (!inviteListId) return
     setError(null)
+    try {
+      const invitee = await utils.users.search.fetch({ username: inviteUsername })
+      if (!invitee) { setError('User not found'); return }
+      const status = checkPublicKey(invitee.username, invitee.publicKey)
+      if (status === 'mismatch') {
+        setError(
+          `${invitee.username}'s encryption key has changed since you last shared with them. ` +
+          'This can mean they reset their account — or that the key is being substituted. ' +
+          'Verify with them directly before sharing anything else.'
+        )
+        return
+      }
+      setInviteCandidate({
+        username: invitee.username,
+        publicKey: invitee.publicKey,
+        fingerprint: await publicKeyFingerprint(invitee.publicKey),
+        firstContact: status === 'new',
+      })
+    } catch (err: any) {
+      setError(err?.message ?? 'Lookup failed')
+    }
+  }
+
+  // Step 2: the user has seen the fingerprint. Pin it and seal the list key to it.
+  async function handleConfirmInvite() {
+    if (!inviteListId || !inviteCandidate) return
+    setError(null)
+    setInviting(true)
     try {
       const list = lists?.find(l => l.id === inviteListId)
       if (!list) return
       const stretchKey = session.getStretchKey()
       if (!stretchKey) return
+      if (pinPublicKey(inviteCandidate.username, inviteCandidate.publicKey) === 'mismatch') {
+        setError('Key changed during the invite — aborted. Verify with the recipient and try again.')
+        return
+      }
       const listKeyB64 = decryptSymmetric(JSON.parse(list.encryptedListKey), stretchKey)
-      const invitee = await utils.users.search.fetch({ username: inviteUsername })
-      if (!invitee) { setError('User not found'); return }
-      const sealedKey = sealToPublicKey(fromBase64(listKeyB64), invitee.publicKey)
-      await inviteMutation.mutateAsync({ listId: inviteListId, inviteeUsername: inviteUsername, encryptedListKey: sealedKey })
-      setInviteUsername('')
-      setInviteListId(null)
+      const sealedKey = sealToPublicKey(fromBase64(listKeyB64), inviteCandidate.publicKey)
+      await inviteMutation.mutateAsync({ listId: inviteListId, inviteeUsername: inviteCandidate.username, encryptedListKey: sealedKey })
+      closeInvite()
     } catch (err: any) {
       setError(err?.message ?? 'Invite failed')
+    } finally {
+      setInviting(false)
     }
   }
 
@@ -149,9 +201,9 @@ export function ListsPage() {
         </div>
       )}
 
-      {inviteListId && (
-        <div className="modal-backdrop" onClick={() => setInviteListId(null)}>
-          <form className="modal-card" onSubmit={handleInvite} onClick={e => e.stopPropagation()}>
+      {inviteListId && !inviteCandidate && (
+        <div className="modal-backdrop" onClick={closeInvite}>
+          <form className="modal-card" onSubmit={handleLookup} onClick={e => e.stopPropagation()}>
             <div className="modal-title">Invite to list</div>
             <div className="form-field">
               <label className="form-label">Username</label>
@@ -159,10 +211,38 @@ export function ListsPage() {
             </div>
             {error && <div className="form-error">{error}</div>}
             <div className="modal-actions">
-              <button className="btn-primary" type="submit" style={{ marginTop: 0 }}>Invite</button>
-              <button className="btn-secondary" type="button" onClick={() => setInviteListId(null)}>Cancel</button>
+              <button className="btn-primary" type="submit" style={{ marginTop: 0 }}>Continue</button>
+              <button className="btn-secondary" type="button" onClick={closeInvite}>Cancel</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {inviteListId && inviteCandidate && (
+        <div className="modal-backdrop" onClick={closeInvite}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Share with {inviteCandidate.username}?</div>
+            <div className="modal-body">
+              {inviteCandidate.firstContact
+                ? `This is the first time you have shared with ${inviteCandidate.username}. Check this fingerprint with them over a channel you trust — a matching fingerprint is what proves the key belongs to them and not to the server.`
+                : `This matches the key you have shared with ${inviteCandidate.username} before.`}
+            </div>
+            <div style={{
+              margin: '4px 0 12px', padding: '12px 14px',
+              border: '1px solid var(--border)', borderRadius: 8,
+              fontFamily: 'ui-monospace, monospace', fontSize: 14, letterSpacing: 1,
+              wordBreak: 'break-all',
+            }}>
+              {inviteCandidate.fingerprint}
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-actions">
+              <button className="btn-primary" type="button" style={{ marginTop: 0 }} onClick={handleConfirmInvite} disabled={inviting}>
+                {inviting ? 'Sharing…' : 'Confirm & share'}
+              </button>
+              <button className="btn-secondary" type="button" onClick={() => { setInviteCandidate(null); setError(null) }}>Back</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

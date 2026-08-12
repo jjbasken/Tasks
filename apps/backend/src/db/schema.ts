@@ -41,6 +41,14 @@ export const tasks = sqliteTable('tasks', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+// Individual tokens invalidated by an explicit logout. Bumping users.tokenVersion
+// kills every session at once; this kills exactly the session that logged out.
+// Rows are purged once past their token's own expiry.
+export const revokedTokens = sqliteTable('revoked_tokens', {
+  jti: text('jti').primaryKey(),
+  expiresAt: integer('expires_at').notNull(),
+})
+
 export const devices = sqliteTable('devices', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id),

@@ -59,6 +59,12 @@ export function migrate(db: Db) {
     `)
   } catch {}
   sqlite.run(`
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      jti TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    )
+  `)
+  sqlite.run(`
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),

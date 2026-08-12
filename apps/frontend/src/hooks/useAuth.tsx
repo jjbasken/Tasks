@@ -12,7 +12,7 @@ type AuthContextType = {
   isAdmin: boolean
   login: (username: string, passphrase: string) => Promise<void>
   register: (username: string, email: string, passphrase: string, isAdmin?: boolean) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -63,7 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  function logout() {
+  async function logout() {
+    // Revoke the token server-side first. Clearing localStorage alone leaves a
+    // year-long token valid for anyone who captured it.
+    try {
+      await utils.client.auth.logout.mutate()
+    } catch {
+      // Offline or already-invalid token — clear locally regardless.
+    }
     session.clear()
     setIsLoggedIn(false)
     setIsAdmin(false)

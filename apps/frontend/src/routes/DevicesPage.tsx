@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { session } from '../lib/session.js'
 import { sealToPublicKey } from '@tasks/shared'
 import { useDeviceList, usePendingDevices, useApproveDevice, useRevokeDevice } from '../hooks/useDevices.js'
 import { Sidebar } from '../components/Sidebar.js'
+
+type PendingDevice = { id: string; name: string; publicKey: string; createdAt: number }
 
 export function DevicesPage() {
   const navigate = useNavigate()
@@ -11,12 +14,38 @@ export function DevicesPage() {
   const approve = useApproveDevice()
   const revoke = useRevokeDevice()
 
-  async function handleApprove(deviceId: string, devicePublicKey: string) {
+  const [confirming, setConfirming] = useState<PendingDevice | null>(null)
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function openApproval(device: PendingDevice) {
+    setError(null)
+    setCode('')
+    setConfirming(device)
+  }
+
+  // Anyone who knows the username can queue a request, so the pending entry itself
+  // proves nothing — the code typed here is what binds the approval to the device
+  // physically in front of the user. The server re-derives and checks it too.
+  async function handleApprove(e: React.FormEvent) {
+    e.preventDefault()
+    if (!confirming) return
+    setError(null)
     const privateKey = session.getPrivateKey()
-    if (!privateKey) { alert('Session expired — please log in again'); return }
-    const privateKeyBytes = new TextEncoder().encode(privateKey)
-    const sealed = sealToPublicKey(privateKeyBytes, devicePublicKey)
-    await approve.mutateAsync({ deviceId, sealedUserPrivateKey: sealed })
+    if (!privateKey) { setError('Session expired — please log in again'); return }
+    try {
+      const privateKeyBytes = new TextEncoder().encode(privateKey)
+      const sealed = sealToPublicKey(privateKeyBytes, confirming.publicKey)
+      await approve.mutateAsync({
+        deviceId: confirming.id,
+        verificationCode: code.trim(),
+        sealedUserPrivateKey: sealed,
+      })
+      setConfirming(null)
+      setCode('')
+    } catch (err: any) {
+      setError(err?.message ?? 'Approval failed')
+    }
   }
 
   async function handleRevoke(deviceId: string) {
@@ -34,11 +63,15 @@ export function DevicesPage() {
           {pending && pending.length > 0 && (
             <div className="pending-section">
               <div className="pending-label">Pending approvals</div>
+              <p className="hint-text" style={{ marginBottom: 8 }}>
+                Only approve a request you started yourself. The name below is supplied by
+                whoever made the request and proves nothing.
+              </p>
               {pending.map(d => (
                 <div key={d.id} className="card-row" style={{ background: 'transparent', padding: '8px 0', border: 'none' }}>
                   <span className="card-row-label">{d.name}</span>
                   <span className="card-row-meta">{new Date(d.createdAt).toLocaleString()}</span>
-                  <button className="btn-approve" onClick={() => handleApprove(d.id, d.publicKey)}>Approve</button>
+                  <button className="btn-approve" onClick={() => openApproval(d)}>Approve</button>
                 </div>
               ))}
             </div>
@@ -62,6 +95,40 @@ export function DevicesPage() {
           <p className="hint-text">On a new device, go to the login page and choose "Approve via existing device". Then approve it here.</p>
         </div>
       </div>
+
+      {confirming && (
+        <div className="modal-backdrop" onClick={() => setConfirming(null)}>
+          <form className="modal-card" onSubmit={handleApprove} onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Approve “{confirming.name}”?</div>
+            <div className="modal-body">
+              Approving hands this device the key to your account. Enter the 6-digit code
+              shown on the new device's screen. If you did not start this request, cancel —
+              do not accept a code sent to you by anyone.
+            </div>
+            <div className="form-field">
+              <label className="form-label">Verification code</label>
+              <input
+                className="form-input"
+                value={code}
+                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                inputMode="numeric"
+                autoComplete="off"
+                autoFocus
+                required
+                style={{ letterSpacing: 6, fontFamily: 'ui-monospace, monospace' }}
+              />
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-actions">
+              <button className="btn-primary" type="submit" style={{ marginTop: 0 }} disabled={code.length !== 6 || approve.isPending}>
+                {approve.isPending ? 'Approving…' : 'Approve device'}
+              </button>
+              <button className="btn-secondary" type="button" onClick={() => setConfirming(null)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

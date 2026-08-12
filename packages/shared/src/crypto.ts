@@ -47,6 +47,38 @@ export function deriveServerPassword(stretchKey: Uint8Array): string {
   return toBase64(token)
 }
 
+/**
+ * Six-digit pairing code bound to a device's public key.
+ *
+ * The requesting device and the approving device derive this from the same
+ * public key string, so comparing them proves the key being sealed to is the
+ * key held by the person in front of the new device — not one injected by a
+ * stranger who merely knows the username. The code is hashed from the base64
+ * text (not the decoded bytes) so it never throws on malformed input.
+ */
+export async function deviceVerificationCode(devicePublicKeyB64: string): Promise<string> {
+  await sodium.ready
+  // BLAKE2b output must be >= crypto_generichash_BYTES_MIN (16), so hash wide and truncate.
+  const digest = sodium.crypto_generichash(32, sodium.from_string(`device-pairing:${devicePublicKeyB64}`))
+  const n = ((digest[0] << 24) | (digest[1] << 16) | (digest[2] << 8) | digest[3]) >>> 0
+  return String(n % 1_000_000).padStart(6, '0')
+}
+
+/**
+ * Short human-comparable fingerprint of a public key, e.g. "a1b2 c3d4 e5f6 7890 1a2b".
+ *
+ * Key distribution goes through the server, so a compromised server could hand
+ * out its own public key and read anything sealed to it. Showing the fingerprint
+ * lets users compare it out of band before sharing key material.
+ */
+export async function publicKeyFingerprint(publicKeyB64: string): Promise<string> {
+  await sodium.ready
+  const digest = sodium.crypto_generichash(32, sodium.from_string(`pubkey-fp:${publicKeyB64}`))
+  // 10 bytes is plenty to compare aloud; 80 bits of collision resistance.
+  const hex = Array.from(digest.subarray(0, 10), b => b.toString(16).padStart(2, '0')).join('')
+  return (hex.match(/.{4}/g) ?? []).join(' ')
+}
+
 /** Generate a curve25519 keypair. Returns base64 strings for storage. */
 export function generateKeypair(): { publicKey: string; privateKey: string } {
   const kp = sodium.crypto_box_keypair()

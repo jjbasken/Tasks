@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router'
 import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
-import { initCrypto, generateKeypair, openSeal } from '@tasks/shared'
+import { pinPublicKey } from '../lib/keyPinning.js'
+import { initCrypto, generateKeypair, openSeal, deviceVerificationCode } from '@tasks/shared'
 
 type Stage = 'form' | 'waiting'
 
@@ -24,6 +25,7 @@ export function RequestDevicePage() {
   const [deviceName, setDeviceName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [verificationCode, setVerificationCode] = useState('')
 
   const pendingRef = useRef<PendingState | null>(null)
 
@@ -39,6 +41,10 @@ export function RequestDevicePage() {
         name: deviceName || 'New device',
         devicePublicKey: publicKey,
       })
+      // Derived locally from this device's own key — the approving device derives
+      // the same value from the key it is about to seal to, so a matching code
+      // means no one has swapped it in between.
+      setVerificationCode(await deviceVerificationCode(publicKey))
       pendingRef.current = {
         deviceId: result.deviceId,
         pendingToken: result.pendingToken,
@@ -74,7 +80,10 @@ export function RequestDevicePage() {
         session.setPrivateKey(userPrivateKeyB64)
 
         const userInfo = await utils.users.search.fetch({ username: p.username })
-        if (userInfo) session.setPublicKey(userInfo.publicKey)
+        if (userInfo) {
+          session.setPublicKey(userInfo.publicKey)
+          pinPublicKey(p.username, userInfo.publicKey)
+        }
 
         clearInterval(interval)
         navigate('/tasks')
@@ -105,7 +114,18 @@ export function RequestDevicePage() {
             <span className="auth-logo-name">Tasks</span>
           </div>
           <h1 className="auth-heading">Waiting for approval</h1>
-          <p className="auth-sub">Open the Devices page on a trusted device and approve this request.</p>
+          <p className="auth-sub">Open the Devices page on a trusted device and enter this code.</p>
+          <div style={{
+            margin: '20px 0 8px', padding: '18px 0', textAlign: 'center',
+            border: '1px solid var(--border)', borderRadius: 8,
+            fontSize: 34, fontWeight: 600, letterSpacing: 8, fontFamily: 'ui-monospace, monospace',
+          }}>
+            {verificationCode || '••••••'}
+          </div>
+          <p className="hint-text" style={{ marginBottom: 8 }}>
+            Type this code on your trusted device. Never accept a code someone sends you —
+            it must come from the screen in front of you. Expires in 10 minutes.
+          </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 0' }}>
             <div style={{
               width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)',
@@ -117,7 +137,7 @@ export function RequestDevicePage() {
           <div className="auth-link-row">
             <button
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}
-              onClick={() => { pendingRef.current = null; setStage('form') }}
+              onClick={() => { pendingRef.current = null; setVerificationCode(''); setStage('form') }}
             >
               Cancel
             </button>

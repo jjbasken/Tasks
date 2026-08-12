@@ -1,10 +1,19 @@
 import { TRPCError } from '@trpc/server'
-import { eq, count } from 'drizzle-orm'
+import { eq, lt, count } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID, createHmac } from 'crypto'
 import { router, publicProcedure, protectedProcedure, bootstrapOrAdminProcedure } from '../trpc.js'
-import { users, lists, listMemberships } from '../db/schema.js'
+import { users, lists, listMemberships, revokedTokens } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
+
+// Argon2id hash of a random value, verified against when the username is unknown so
+// a failed login costs the same work whether or not the account exists. Without it
+// the missing-user path returns in microseconds and leaks which usernames are real.
+let dummyHash: Promise<string> | null = null
+function getDummyHash(): Promise<string> {
+  dummyHash ??= Bun.password.hash(randomUUID(), { algorithm: 'argon2id' })
+  return dummyHash
+}
 
 // Deterministic decoy salt for unknown usernames so the pre-auth challenge does not
 // reveal which accounts exist. Same shape as generateKdfSalt (16 bytes, base64).
@@ -74,7 +83,11 @@ export const authRouter = router({
     .input(z.object({ username: z.string(), passwordHash: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
-      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' })
+      if (!user) {
+        // Burn the same Argon2id work as a real verification before failing.
+        await Bun.password.verify(input.passwordHash, await getDummyHash())
+        throw new TRPCError({ code: 'UNAUTHORIZED' })
+      }
       const valid = await Bun.password.verify(input.passwordHash, user.passwordHash)
       if (!valid) throw new TRPCError({ code: 'UNAUTHORIZED' })
       const token = await signToken(user.id, user.tokenVersion)
@@ -85,7 +98,18 @@ export const authRouter = router({
       }
     }),
 
-  logout: protectedProcedure.mutation(() => {
+  // Revokes the calling session's own token. Clearing localStorage alone leaves a
+  // year-long token valid for anyone who captured it, so the token id goes on the
+  // revocation list that createContext checks on every request.
+  logout: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.tokenId) return { ok: true }
+    const now = Date.now()
+    // Expired entries can never match a live token again — drop them as we go.
+    await ctx.db.delete(revokedTokens).where(lt(revokedTokens.expiresAt, now))
+    await ctx.db
+      .insert(revokedTokens)
+      .values({ jti: ctx.tokenId, expiresAt: ctx.tokenExpiresAt ?? now })
+      .onConflictDoNothing()
     return { ok: true }
   }),
 })

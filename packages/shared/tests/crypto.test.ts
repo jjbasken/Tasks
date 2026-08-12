@@ -12,6 +12,8 @@ import {
   openSeal,
   toBase64,
   fromBase64,
+  deviceVerificationCode,
+  publicKeyFingerprint,
 } from '../src/crypto.js'
 
 beforeAll(async () => { await initCrypto() })
@@ -102,5 +104,35 @@ describe('generateListKey', () => {
   it('returns 32 bytes as base64', () => {
     const key = generateListKey()
     expect(fromBase64(key).length).toBe(32)
+  })
+})
+
+describe('deviceVerificationCode', () => {
+  it('is a 6-digit string', async () => {
+    const code = await deviceVerificationCode(generateKeypair().publicKey)
+    expect(code).toMatch(/^\d{6}$/)
+  })
+  it('is deterministic for a given key, so both devices derive the same code', async () => {
+    const { publicKey } = generateKeypair()
+    expect(await deviceVerificationCode(publicKey)).toBe(await deviceVerificationCode(publicKey))
+  })
+  it('differs between keys', async () => {
+    const a = await deviceVerificationCode(generateKeypair().publicKey)
+    const b = await deviceVerificationCode(generateKeypair().publicKey)
+    expect(a).not.toBe(b)
+  })
+  it('does not throw on non-base64 input', async () => {
+    expect(await deviceVerificationCode('not-base64!!')).toMatch(/^\d{6}$/)
+  })
+})
+
+describe('publicKeyFingerprint', () => {
+  it('is stable for a key and different across keys', async () => {
+    const { publicKey } = generateKeypair()
+    expect(await publicKeyFingerprint(publicKey)).toBe(await publicKeyFingerprint(publicKey))
+    expect(await publicKeyFingerprint(publicKey)).not.toBe(await publicKeyFingerprint(generateKeypair().publicKey))
+  })
+  it('formats as 5 space-separated hex groups', async () => {
+    expect(await publicKeyFingerprint(generateKeypair().publicKey)).toMatch(/^([0-9a-f]{4} ){4}[0-9a-f]{4}$/)
   })
 })

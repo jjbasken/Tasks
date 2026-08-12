@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'bun:test'
 import { createCallerFactory } from '@trpc/server/unstable-core-do-not-import'
 import { randomUUID } from 'crypto'
+import { deviceVerificationCode } from '@tasks/shared'
 import { appRouter } from '../src/router.js'
 import { makeTestDb } from './helpers.js'
-import { users } from '../src/db/schema.js'
+import { devices, users } from '../src/db/schema.js'
 
 const createCaller = createCallerFactory()(appRouter)
 
@@ -13,6 +14,7 @@ async function seedUser(db: ReturnType<typeof makeTestDb>) {
   return userId
 }
 
+import { eq } from 'drizzle-orm'
 import { createContext } from '../src/context.js'
 
 describe('devices.revoke — token invalidation', () => {
@@ -23,7 +25,7 @@ describe('devices.revoke — token invalidation', () => {
     const authedCaller = createCaller({ db, userId })
 
     const { deviceId, pendingToken } = await anonCaller.devices.requestApproval({ username: 'u', name: 'Test', devicePublicKey: 'pk' })
-    await authedCaller.devices.approve({ deviceId, sealedUserPrivateKey: 'sealed' })
+    await authedCaller.devices.approve({ deviceId, verificationCode: await deviceVerificationCode('pk'), sealedUserPrivateKey: 'sealed' })
     const result = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
     const token = result!.token
 
@@ -77,7 +79,7 @@ describe('devices.checkApproval token reuse prevention', () => {
     const authedCaller = createCaller({ db, userId })
 
     const { deviceId, pendingToken } = await anonCaller.devices.requestApproval({ username: 'u', name: 'Test', devicePublicKey: 'pk' })
-    await authedCaller.devices.approve({ deviceId, sealedUserPrivateKey: 'sealed' })
+    await authedCaller.devices.approve({ deviceId, verificationCode: await deviceVerificationCode('pk'), sealedUserPrivateKey: 'sealed' })
 
     // First call succeeds
     const first = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
@@ -102,10 +104,88 @@ describe('devices.listPending + approve + checkApproval', () => {
     expect(pending).toHaveLength(1)
     expect(pending[0].id).toBe(deviceId)
 
-    await authedCaller.devices.approve({ deviceId, sealedUserPrivateKey: 'sealed-key' })
+    await authedCaller.devices.approve({ deviceId, verificationCode: await deviceVerificationCode('devpk2'), sealedUserPrivateKey: 'sealed-key' })
 
     const approval = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
     expect(approval?.sealedUserPrivateKey).toBe('sealed-key')
     expect(approval?.token).toBeString()
+  })
+})
+
+describe('devices.approve — pairing verification code', () => {
+  it('rejects approval when the verification code does not match the device key', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const anonCaller = createCaller({ db, userId: null })
+    const authedCaller = createCaller({ db, userId })
+
+    // Attacker queues a request against a known username with their own keypair.
+    const { deviceId, pendingToken } = await anonCaller.devices.requestApproval({ username: 'u', name: 'iPhone 15', devicePublicKey: 'attacker-pk' })
+
+    // Any code other than the one derived from the device's own key.
+    const real = await deviceVerificationCode('attacker-pk')
+    const wrong = real === '000000' ? '111111' : '000000'
+
+    // Victim clicking approve is not enough — without the code from the requesting
+    // device's screen, the private key is never sealed to it.
+    await expect(
+      authedCaller.devices.approve({ deviceId, verificationCode: wrong, sealedUserPrivateKey: 'sealed' })
+    ).rejects.toThrow()
+
+    const approval = await anonCaller.devices.checkApproval({ deviceId, pendingToken })
+    expect(approval).toBeNull()
+  })
+
+  it('rejects approval of an expired pending request and hides it from listPending', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const anonCaller = createCaller({ db, userId: null })
+    const authedCaller = createCaller({ db, userId })
+
+    const { deviceId } = await anonCaller.devices.requestApproval({ username: 'u', name: 'stale', devicePublicKey: 'pk' })
+    // Age the request past the 10-minute window
+    await db.update(devices).set({ createdAt: Date.now() - 11 * 60 * 1000 }).where(eq(devices.id, deviceId))
+
+    expect(await authedCaller.devices.listPending()).toHaveLength(0)
+    await expect(
+      authedCaller.devices.approve({ deviceId, verificationCode: await deviceVerificationCode('pk'), sealedUserPrivateKey: 'sealed' })
+    ).rejects.toThrow()
+  })
+
+  it('rejects re-approval of an already-revoked device', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const anonCaller = createCaller({ db, userId: null })
+    const authedCaller = createCaller({ db, userId })
+    const code = await deviceVerificationCode('pk')
+
+    const { deviceId } = await anonCaller.devices.requestApproval({ username: 'u', name: 'Test', devicePublicKey: 'pk' })
+    await authedCaller.devices.approve({ deviceId, verificationCode: code, sealedUserPrivateKey: 'sealed' })
+    await authedCaller.devices.revoke({ deviceId })
+
+    await expect(
+      authedCaller.devices.approve({ deviceId, verificationCode: code, sealedUserPrivateKey: 'sealed-again' })
+    ).rejects.toThrow()
+  })
+})
+
+describe('devices.requestApproval — account enumeration', () => {
+  it('returns an unapprovable handle for unknown usernames instead of NOT_FOUND', async () => {
+    const db = makeTestDb()
+    await seedUser(db)
+    const caller = createCaller({ db, userId: null })
+
+    const known = await caller.devices.requestApproval({ username: 'u', name: 'a', devicePublicKey: 'pk1' })
+    const unknown = await caller.devices.requestApproval({ username: 'does-not-exist', name: 'a', devicePublicKey: 'pk2' })
+
+    // Same response shape — no oracle for which accounts exist.
+    expect(unknown.deviceId).toBeString()
+    expect(unknown.pendingToken).toBeString()
+    expect(Object.keys(unknown).sort()).toEqual(Object.keys(known).sort())
+
+    // ...and the decoy handle never resolves to a session.
+    expect(await caller.devices.checkApproval({ deviceId: unknown.deviceId, pendingToken: unknown.pendingToken })).toBeNull()
+    // No row was created for the nonexistent user.
+    expect(await db.select().from(devices)).toHaveLength(1)
   })
 })
