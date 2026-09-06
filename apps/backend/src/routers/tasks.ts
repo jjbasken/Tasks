@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { router, protectedProcedure } from '../router.js'
 import { tasks, listMemberships } from '../db/schema.js'
+import { MAX_ID, MAX_TASK_IDS, MAX_TASK_PAYLOAD } from '../lib/limits.js'
 
 async function assertListAccess(db: any, listId: string, userId: string) {
   const [membership] = await db
@@ -15,14 +16,14 @@ async function assertListAccess(db: any, listId: string, userId: string) {
 
 export const tasksRouter = router({
   list: protectedProcedure
-    .input(z.object({ listId: z.string() }))
+    .input(z.object({ listId: z.string().max(MAX_ID) }))
     .query(async ({ ctx, input }) => {
       await assertListAccess(ctx.db, input.listId, ctx.userId)
       return ctx.db.select().from(tasks).where(eq(tasks.listId, input.listId))
     }),
 
   create: protectedProcedure
-    .input(z.object({ listId: z.string(), encryptedPayload: z.string() }))
+    .input(z.object({ listId: z.string().max(MAX_ID), encryptedPayload: z.string().max(MAX_TASK_PAYLOAD) }))
     .mutation(async ({ ctx, input }) => {
       await assertListAccess(ctx.db, input.listId, ctx.userId)
       const id = randomUUID()
@@ -32,7 +33,7 @@ export const tasksRouter = router({
     }),
 
   update: protectedProcedure
-    .input(z.object({ taskId: z.string(), encryptedPayload: z.string() }))
+    .input(z.object({ taskId: z.string().max(MAX_ID), encryptedPayload: z.string().max(MAX_TASK_PAYLOAD) }))
     .mutation(async ({ ctx, input }) => {
       const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, input.taskId))
       if (!task) throw new TRPCError({ code: 'NOT_FOUND' })
@@ -41,7 +42,7 @@ export const tasksRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ taskId: z.string() }))
+    .input(z.object({ taskId: z.string().max(MAX_ID) }))
     .mutation(async ({ ctx, input }) => {
       const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, input.taskId))
       if (!task) throw new TRPCError({ code: 'NOT_FOUND' })
@@ -50,7 +51,7 @@ export const tasksRouter = router({
     }),
 
   clearDone: protectedProcedure
-    .input(z.object({ listId: z.string(), taskIds: z.array(z.string()) }))
+    .input(z.object({ listId: z.string().max(MAX_ID), taskIds: z.array(z.string().max(MAX_ID)).max(MAX_TASK_IDS) }))
     .mutation(async ({ ctx, input }) => {
       if (input.taskIds.length === 0) return
       await assertListAccess(ctx.db, input.listId, ctx.userId)

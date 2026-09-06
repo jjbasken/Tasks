@@ -6,9 +6,13 @@ import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { randomUUID } from 'crypto'
 import * as schema from '../src/db/schema.js'
 import { migrate } from '../src/db/migrate.js'
+import { resetAllRateLimits } from '../src/lib/rateLimit.js'
 import type { AppContext } from '../src/context.js'
 
 export function makeTestDb() {
+  // Rate limit counters are process-global, so a fresh database means a fresh
+  // set of counters too — otherwise attempts leak between tests.
+  resetAllRateLimits()
   const sqlite = new Database(':memory:')
   sqlite.run('PRAGMA foreign_keys = ON')
   const db = drizzle(sqlite, { schema })

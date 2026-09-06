@@ -5,6 +5,7 @@ import { randomUUID, timingSafeEqual } from 'crypto'
 import { deviceVerificationCode } from '@tasks/shared'
 import { router, publicProcedure, protectedProcedure } from '../router.js'
 import { devices, users } from '../db/schema.js'
+import { MAX_ID, MAX_KEY_BLOB, MAX_KEY_MATERIAL, MAX_USERNAME } from '../lib/limits.js'
 import { signToken } from '../lib/jwt.js'
 
 /** A pending request older than this can no longer be approved. */
@@ -18,7 +19,7 @@ function codesMatch(a: string, b: string): boolean {
 
 export const devicesRouter = router({
   requestApproval: publicProcedure
-    .input(z.object({ username: z.string(), name: z.string().max(100), devicePublicKey: z.string() }))
+    .input(z.object({ username: z.string().max(MAX_USERNAME), name: z.string().max(100), devicePublicKey: z.string().max(MAX_KEY_MATERIAL) }))
     .mutation(async ({ ctx, input }) => {
       const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
       // Unknown usernames get a well-formed but unapprovable handle. Returning
@@ -49,10 +50,10 @@ export const devicesRouter = router({
 
   approve: protectedProcedure
     .input(z.object({
-      deviceId: z.string(),
+      deviceId: z.string().max(MAX_ID),
       // Read off the requesting device's screen by the person approving.
-      verificationCode: z.string(),
-      sealedUserPrivateKey: z.string(),
+      verificationCode: z.string().regex(/^\d{6}$/),
+      sealedUserPrivateKey: z.string().max(MAX_KEY_BLOB),
     }))
     .mutation(async ({ ctx, input }) => {
       const [device] = await ctx.db.select().from(devices).where(and(eq(devices.id, input.deviceId), eq(devices.userId, ctx.userId)))
@@ -72,7 +73,7 @@ export const devicesRouter = router({
     }),
 
   checkApproval: publicProcedure
-    .input(z.object({ deviceId: z.string(), pendingToken: z.string() }))
+    .input(z.object({ deviceId: z.string().max(MAX_ID), pendingToken: z.string().max(MAX_ID) }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.transaction(async (tx) => {
         const [device] = await tx.select().from(devices)
@@ -94,7 +95,7 @@ export const devicesRouter = router({
   }),
 
   revoke: protectedProcedure
-    .input(z.object({ deviceId: z.string() }))
+    .input(z.object({ deviceId: z.string().max(MAX_ID) }))
     .mutation(async ({ ctx, input }) => {
       const [device] = await ctx.db.select().from(devices).where(and(eq(devices.id, input.deviceId), eq(devices.userId, ctx.userId)))
       if (!device) throw new TRPCError({ code: 'NOT_FOUND' })

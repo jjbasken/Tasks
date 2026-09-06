@@ -61,6 +61,11 @@ Generate a strong `JWT_SECRET`:
 openssl rand -base64 48
 ```
 
+The server validates `JWT_SECRET` at boot and refuses to start if it is unset,
+shorter than 32 characters, or a known placeholder such as `change-me`. Anyone
+who knows the signing key can mint a token for any account, so `.env.example`
+deliberately ships this value empty rather than with a working default.
+
 ### Running with Docker Compose
 
 ```sh
@@ -161,7 +166,9 @@ Each user has a **curve25519 keypair**. The private key is encrypted with a key 
 
 **Tasks:** all task content is encrypted with a per-list symmetric key (XChaCha20-Poly1305) before leaving the browser. The server stores `encrypted_payload` blobs only.
 
-**Shared lists:** the list key is encrypted to each member's public key. Revoking a member deletes their row and rotates the list key for remaining members.
+**Shared lists:** only a list's owner can invite, and the list key is encrypted to each invited member's public key. Before any key material is sealed, the recipient's public key is checked against a trust-on-first-use pin and its fingerprint is shown for out-of-band comparison, so a substituted key is a visible error rather than a silent one.
+
+Removing a member deletes their membership row, which revokes their access to the list. It does **not** yet rotate the list key, so a removed member retains the key for ciphertext they already hold.
 
 **New devices:** a new device sends a key exchange request; a trusted device encrypts the user's private key to the new device's public key. The server relays the ciphertext only.
 
@@ -169,9 +176,14 @@ Each user has a **curve25519 keypair**. The private key is encrypted with a key 
 
 ## Security
 
-- The passphrase never leaves the client device
+- The passphrase never leaves the client device — only an Argon2id-derived verifier is sent
 - The server holds no plaintext task content, list names, or private key material
-- JWT session tokens expire after 24 hours; device tokens are revocable individually
-- `CORS_ORIGIN` must be set explicitly — wildcard origins are rejected
-- `JWT_SECRET` is required at startup — the server refuses to start without it
-- Pending device approval requests are capped at 5 per user to prevent flooding
+- `JWT_SECRET` is validated at startup — the server refuses to start on an unset, short, or placeholder secret
+- `CORS_ORIGIN` must be set explicitly — the server refuses to start without it
+- Only a list's owner can invite others to it, and a user can hold at most one membership per list (enforced by a database constraint)
+- Failed logins are rate limited to 10 per account and 30 per source address per 15 minutes, checked before any password hashing
+- Unknown usernames get a constant-work login path and a decoy KDF salt, so neither timing nor responses reveal which accounts exist
+- Every API input is length-bounded, so no caller can exhaust storage or CPU with an oversized payload
+- The frontend is served under a strict Content-Security-Policy (`script-src 'self'`, no inline scripts) plus HSTS, `X-Frame-Options`, `nosniff` and `Referrer-Policy`
+- Pending device approval requests are capped at 5 per user, expire after 10 minutes, and require a 6-digit code derived from the new device's own public key
+- Session tokens are long-lived (1 year) but individually revocable: logout revokes exactly that session, and an admin can invalidate every session for a user at once

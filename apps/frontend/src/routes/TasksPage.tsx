@@ -6,25 +6,44 @@ import { TaskDetail } from '../components/TaskDetail.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import { session } from '../lib/session.js'
-import type { TaskPayload } from '@tasks/shared'
+import type { EncryptedBlob, TaskPayload } from '@tasks/shared'
 import { nextOccurrence, decryptSymmetric, openSeal, fromBase64 } from '@tasks/shared'
 
 type Tab = 'now' | 'later' | 'done'
 
-function resolveListKey(encryptedListKey: string, isShared: boolean): string | null {
-  if (!isShared) {
+/** The creator's copy of a list key is JSON {ciphertext, nonce}; an invitee's is a raw base64 sealed box. */
+function asSymmetricBlob(value: string): EncryptedBlob | null {
+  try {
+    const parsed = JSON.parse(value)
+    if (parsed && typeof parsed.ciphertext === 'string' && typeof parsed.nonce === 'string') return parsed
+  } catch { /* not JSON — a sealed box */ }
+  return null
+}
+
+/**
+ * Unwrap this user's own copy of the list key.
+ *
+ * Which of the two shapes a membership row holds depends on how *this user* got
+ * onto the list: the creator's copy is wrapped under their stretch key, an
+ * invitee's is sealed to their curve25519 public key. It does not depend on the
+ * list-level isShared flag, which flips to true for every member the moment
+ * anyone is invited — branching on that locked owners out of their own list the
+ * instant they shared it. Detect the shape instead, so the two never drift.
+ */
+function resolveListKey(encryptedListKey: string): string | null {
+  const symmetric = asSymmetricBlob(encryptedListKey)
+  if (symmetric) {
     const stretchKey = session.getStretchKey()
     if (!stretchKey) return null
-    try { return decryptSymmetric(JSON.parse(encryptedListKey), stretchKey) } catch { return null }
-  } else {
-    const privateKey = session.getPrivateKey()
-    const publicKey = session.getPublicKey()
-    if (!privateKey || !publicKey) return null
-    try {
-      const raw = openSeal(encryptedListKey, publicKey, privateKey)
-      return btoa(String.fromCharCode(...raw))
-    } catch { return null }
+    try { return decryptSymmetric(symmetric, stretchKey) } catch { return null }
   }
+  const privateKey = session.getPrivateKey()
+  const publicKey = session.getPublicKey()
+  if (!privateKey || !publicKey) return null
+  try {
+    const raw = openSeal(encryptedListKey, publicKey, privateKey)
+    return btoa(String.fromCharCode(...raw))
+  } catch { return null }
 }
 
 export function TasksPage() {
@@ -44,7 +63,7 @@ export function TasksPage() {
 
   const listKeyB64 = useMemo(() => {
     if (!currentList) return null
-    return resolveListKey(currentList.encryptedListKey, currentList.isShared)
+    return resolveListKey(currentList.encryptedListKey)
   }, [currentList?.id, currentList?.encryptedListKey])
 
   const { data: tasks = [] } = useTaskList(currentListId, listKeyB64)

@@ -164,7 +164,11 @@ export function ListsPage() {
               <div key={list.id} className="card-row">
                 <span className="card-row-label">{list.name}</span>
                 <span className="card-row-meta">{list.id.slice(0, 12)}…</span>
-                {list.isShared && (
+                {/* Gated on what the server actually allows: the owner of a list that
+                    is not the personal one. Gating on isShared instead made this
+                    unreachable — a new list starts unshared, and only an invite
+                    flips that flag, so the button could never appear. */}
+                {list.isOwner && !list.isPersonal && (
                   <button className="btn-accent-sm" onClick={() => setInviteListId(list.id)}>+ Invite</button>
                 )}
                 {!list.isPersonal && (
