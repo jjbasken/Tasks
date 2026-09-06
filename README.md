@@ -184,6 +184,6 @@ Removing a member deletes their membership row, which revokes their access to th
 - Failed logins are rate limited to 10 per account and 30 per source address per 15 minutes, checked before any password hashing
 - Unknown usernames get a constant-work login path and a decoy KDF salt, so neither timing nor responses reveal which accounts exist
 - Every API input is length-bounded, so no caller can exhaust storage or CPU with an oversized payload
-- The frontend is served under a strict Content-Security-Policy (`script-src 'self'`, no inline scripts) plus HSTS, `X-Frame-Options`, `nosniff` and `Referrer-Policy`
+- The frontend is served under a strict Content-Security-Policy — no inline scripts, and `script-src` allows only same-origin scripts plus `'wasm-unsafe-eval'` for libsodium's WebAssembly (JavaScript `eval()` stays blocked) — alongside HSTS, `X-Frame-Options`, `nosniff` and `Referrer-Policy`
 - Pending device approval requests are capped at 5 per user, expire after 10 minutes, and require a 6-digit code derived from the new device's own public key
 - Session tokens are long-lived (1 year) but individually revocable: logout revokes exactly that session, and an admin can invalidate every session for a user at once
