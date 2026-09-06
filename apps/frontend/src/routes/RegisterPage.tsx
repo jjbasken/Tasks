@@ -12,7 +12,7 @@ export function RegisterPage() {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [passphrase, setPassphrase] = useState('')
-  const [confirm, setConfirm] = useState('')
+  const [confirmPassphrase, setConfirmPassphrase] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -27,7 +27,7 @@ export function RegisterPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (passphrase !== confirm) { setError('Passphrases do not match'); return }
+    if (passphrase !== confirmPassphrase) { setError('Passphrases do not match'); return }
     setError(null)
     setSuccess(null)
     setLoading(true)
@@ -38,7 +38,7 @@ export function RegisterPage() {
       setUsername('')
       setEmail('')
       setPassphrase('')
-      setConfirm('')
+      setConfirmPassphrase('')
       setIsAdmin(false)
       utils.users.list.invalidate()
     } catch (err: any) {
@@ -72,7 +72,7 @@ export function RegisterPage() {
           </div>
           <div className="form-field">
             <label className="form-label">Confirm passphrase</label>
-            <input className="form-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
+            <input className="form-input" type="password" value={confirmPassphrase} onChange={e => setConfirmPassphrase(e.target.value)} required />
           </div>
           <div className="form-field" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <input
@@ -137,7 +137,7 @@ export function RegisterPage() {
                     <td style={{ padding: '8px 4px' }}>
                       <button
                         onClick={() => {
-                          if (confirm(`Revoke all sessions for ${user.username}? They will be signed out on every device and must log in again.`)) {
+                          if (window.confirm(`Revoke all sessions for ${user.username}? They will be signed out on every device and must log in again.`)) {
                             revokeSessionsMutation.mutate({ userId: user.id })
                           }
                         }}

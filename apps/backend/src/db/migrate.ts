@@ -64,6 +64,23 @@ export function migrate(db: Db) {
       expires_at INTEGER NOT NULL
     )
   `)
+  // One membership per (list, user). Duplicates let anyone who could invite push a
+  // second row with an attacker-chosen encrypted_list_key onto a user who was
+  // already a member, which shows up as a duplicate list they cannot decrypt.
+  // Collapse any existing duplicates onto the oldest row — that is the one whose
+  // key material was sealed by the legitimate invite — before adding the index.
+  sqlite.run(`
+    DELETE FROM list_memberships WHERE id NOT IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY list_id, user_id ORDER BY created_at, id) AS rn
+        FROM list_memberships
+      ) WHERE rn = 1
+    )
+  `)
+  sqlite.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS list_memberships_list_user_idx
+      ON list_memberships (list_id, user_id)
+  `)
   sqlite.run(`
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,

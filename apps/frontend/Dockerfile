@@ -17,4 +17,5 @@ RUN bun run vite build
 FROM nginx:alpine AS runner
 COPY --from=builder /app/apps/frontend/dist /usr/share/nginx/html
 COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY apps/frontend/security-headers.conf /etc/nginx/snippets/security-headers.conf
 EXPOSE 80

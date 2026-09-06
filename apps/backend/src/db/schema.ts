@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -31,7 +31,11 @@ export const listMemberships = sqliteTable('list_memberships', {
   encryptedListKey: text('encrypted_list_key').notNull(),
   invitedBy: text('invited_by').references(() => users.id),
   createdAt: integer('created_at').notNull(),
-})
+}, table => ({
+  // A user belongs to a list at most once. Enforced in the database so a racing
+  // pair of invites cannot slip a second row past the check in the router.
+  listUser: uniqueIndex('list_memberships_list_user_idx').on(table.listId, table.userId),
+}))
 
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),

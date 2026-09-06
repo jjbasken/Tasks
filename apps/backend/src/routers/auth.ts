@@ -5,6 +5,36 @@ import { randomUUID, createHmac } from 'crypto'
 import { router, publicProcedure, protectedProcedure, bootstrapOrAdminProcedure } from '../trpc.js'
 import { users, lists, listMemberships, revokedTokens } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
+import { clearHits, recordHit, withinLimits, type RateLimit } from '../lib/rateLimit.js'
+import {
+  MAX_EMAIL, MAX_KEY_BLOB, MAX_KEY_MATERIAL, MAX_NAME_BLOB, MAX_PASSWORD_HASH, MAX_USERNAME,
+} from '../lib/limits.js'
+
+const WINDOW_MS = 15 * 60 * 1000
+/** Failed logins tolerated per account before the account is locked out for the window. */
+const MAX_FAILURES_PER_USERNAME = 10
+/** Failed logins tolerated per source address, across all accounts. */
+const MAX_FAILURES_PER_IP = 30
+/** Pre-auth challenges tolerated per source address. Cheap, but a probing oracle. */
+const MAX_CHALLENGES_PER_IP = 120
+
+// Keyed on the *submitted* username, never on whether that account exists —
+// otherwise the presence or absence of a lockout would answer the enumeration
+// question the decoy salt exists to hide. The per-username limit is the load
+// bearing one: it is bound to the account under attack and cannot be spoofed.
+// The per-IP limit only applies when a client address is actually known.
+function loginLimits(username: string, clientIp: string | null | undefined): RateLimit[] {
+  const limits: RateLimit[] = [
+    { key: `login:user:${username.toLowerCase()}`, limit: MAX_FAILURES_PER_USERNAME, windowMs: WINDOW_MS },
+  ]
+  if (clientIp) limits.push({ key: `login:ip:${clientIp}`, limit: MAX_FAILURES_PER_IP, windowMs: WINDOW_MS })
+  return limits
+}
+
+/** Built per throw — a shared Error instance would carry one stale stack across every caller. */
+function tooManyRequests(): TRPCError {
+  return new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many failed attempts. Try again later.' })
+}
 
 // Argon2id hash of a random value, verified against when the username is unknown so
 // a failed login costs the same work whether or not the account exists. Without it
@@ -30,8 +60,13 @@ export const authRouter = router({
   }),
 
   getLoginChallenge: publicProcedure
-    .input(z.object({ username: z.string() }))
+    .input(z.object({ username: z.string().max(MAX_USERNAME) }))
     .query(async ({ ctx, input }) => {
+      if (ctx.clientIp) {
+        const limits: RateLimit[] = [{ key: `challenge:ip:${ctx.clientIp}`, limit: MAX_CHALLENGES_PER_IP, windowMs: WINDOW_MS }]
+        if (!withinLimits(limits)) throw tooManyRequests()
+        recordHit(limits)
+      }
       const [user] = await ctx.db.select({ kdfSalt: users.kdfSalt }).from(users).where(eq(users.username, input.username))
       // Return only the KDF salt (needed to derive the login key). Encrypted key
       // material is handed out by `login`, after the password has been verified.
@@ -41,14 +76,14 @@ export const authRouter = router({
 
   register: bootstrapOrAdminProcedure
     .input(z.object({
-      username: z.string().min(2).max(40),
-      email: z.string().email(),
-      passwordHash: z.string(),
-      publicKey: z.string(),
-      kdfSalt: z.string(),
-      encryptedPrivateKey: z.string(),
-      encryptedPersonalListKey: z.string(),
-      encryptedPersonalListName: z.string(),
+      username: z.string().min(2).max(MAX_USERNAME),
+      email: z.string().email().max(MAX_EMAIL),
+      passwordHash: z.string().max(MAX_PASSWORD_HASH),
+      publicKey: z.string().max(MAX_KEY_MATERIAL),
+      kdfSalt: z.string().max(MAX_KEY_MATERIAL),
+      encryptedPrivateKey: z.string().max(MAX_KEY_BLOB),
+      encryptedPersonalListKey: z.string().max(MAX_KEY_BLOB),
+      encryptedPersonalListName: z.string().max(MAX_NAME_BLOB),
       isAdmin: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -80,16 +115,33 @@ export const authRouter = router({
     }),
 
   login: publicProcedure
-    .input(z.object({ username: z.string(), passwordHash: z.string() }))
+    .input(z.object({
+      username: z.string().max(MAX_USERNAME),
+      passwordHash: z.string().max(MAX_PASSWORD_HASH),
+    }))
     .mutation(async ({ ctx, input }) => {
+      // Checked before any hashing. Every attempt — including one against an
+      // account that does not exist — costs a full Argon2id verification, so an
+      // unmetered login endpoint is a CPU exhaustion lever as much as it is a
+      // password guessing one.
+      const limits = loginLimits(input.username, ctx.clientIp)
+      if (!withinLimits(limits)) throw tooManyRequests()
+
       const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
       if (!user) {
         // Burn the same Argon2id work as a real verification before failing.
         await Bun.password.verify(input.passwordHash, await getDummyHash())
+        recordHit(limits)
         throw new TRPCError({ code: 'UNAUTHORIZED' })
       }
       const valid = await Bun.password.verify(input.passwordHash, user.passwordHash)
-      if (!valid) throw new TRPCError({ code: 'UNAUTHORIZED' })
+      if (!valid) {
+        recordHit(limits)
+        throw new TRPCError({ code: 'UNAUTHORIZED' })
+      }
+      // Only failures consume budget, so an active user is never locked out by
+      // their own successful logins.
+      clearHits(limits)
       const token = await signToken(user.id, user.tokenVersion)
       return {
         token,
