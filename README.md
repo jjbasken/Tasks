@@ -72,19 +72,29 @@ deliberately ships this value empty rather than with a working default.
 docker compose up -d
 ```
 
+The backend runs as UID 1000. When using the default bind-mounted data
+directory, create it with matching ownership before first start:
+
+```sh
+mkdir -p "${DB_DATA_PATH:-./data}"
+chown 1000:1000 "${DB_DATA_PATH:-./data}"
+```
+
 This starts three services:
 
 | Service | Port | Description |
 |---|---|---|
 | `frontend` | 3000 | React app served by nginx |
-| `backend` | 3001 | Bun + Hono API server |
+| `backend` | internal only | Bun + Hono API server, reachable only through nginx |
 | `cloudflared` | — | Cloudflare Tunnel (exposes frontend publicly) |
 
 The SQLite database is stored at `DB_DATA_PATH` (default: `./data/db.sqlite`).
+Port 3001 is deliberately not published on the host; this keeps proxy-derived
+source addresses trustworthy for authentication rate limits.
 
 ### Cloudflare Tunnel
 
-The compose file includes a `cloudflared` service. Set `CLOUDFLARE_TUNNEL_TOKEN` in your `.env` and configure the tunnel in the Cloudflare dashboard to route your domain to `http://frontend:80`.
+The compose file includes a `cloudflared` service. Set `CLOUDFLARE_TUNNEL_TOKEN` in your `.env` and configure the tunnel in the Cloudflare dashboard to route your domain to `http://frontend:8080`.
 
 If you prefer a traditional reverse proxy (Caddy, nginx), remove the `cloudflared` service and proxy to `http://localhost:3000`.
 
@@ -158,7 +168,7 @@ tasks/
 
 ### Encryption Model
 
-Each user has a **curve25519 keypair**. The private key is encrypted with a key derived from their passphrase (Argon2id) and never stored in plaintext anywhere — not on the server, not in the browser.
+Each user has a **curve25519 keypair**. The private key is encrypted with a key derived from their passphrase (Argon2id) before it is stored by the server. After login, plaintext key material exists only in browser memory and is removed on reload, tab close, or logout.
 
 **Registration:** the client derives a stretch key from the passphrase, generates a keypair and a personal list key, encrypts both with the stretch key, and sends only ciphertext to the server.
 
@@ -166,11 +176,11 @@ Each user has a **curve25519 keypair**. The private key is encrypted with a key 
 
 **Tasks:** all task content is encrypted with a per-list symmetric key (XChaCha20-Poly1305) before leaving the browser. The server stores `encrypted_payload` blobs only.
 
-**Shared lists:** only a list's owner can invite, and the list key is encrypted to each invited member's public key. Before any key material is sealed, the recipient's public key is checked against a trust-on-first-use pin and its fingerprint is shown for out-of-band comparison, so a substituted key is a visible error rather than a silent one.
+**Shared lists:** list names and task payloads are encrypted with the per-list key. Only a list's owner can invite, and the list key is encrypted to each invited member's public key. Before any key material is sealed, the recipient's public key is checked against a trust-on-first-use pin and its fingerprint is shown for out-of-band comparison, so a substituted key is a visible error rather than a silent one. Owners automatically migrate legacy list names from stretch-key encryption after their first upgraded login.
 
 Removing a member deletes their membership row, which revokes their access to the list. It does **not** yet rotate the list key, so a removed member retains the key for ciphertext they already hold.
 
-**New devices:** a new device sends a key exchange request; a trusted device encrypts the user's private key to the new device's public key. The server relays the ciphertext only.
+**New devices:** a new device sends a key exchange request; a trusted device encrypts a versioned bundle containing the user's private key and stretch key to the new device's public key. The server relays the ciphertext only and cannot open it.
 
 ---
 
@@ -185,5 +195,5 @@ Removing a member deletes their membership row, which revokes their access to th
 - Unknown usernames get a constant-work login path and a decoy KDF salt, so neither timing nor responses reveal which accounts exist
 - Every API input is length-bounded, so no caller can exhaust storage or CPU with an oversized payload
 - The frontend is served under a strict Content-Security-Policy — no inline scripts, and `script-src` allows only same-origin scripts plus `'wasm-unsafe-eval'` for libsodium's WebAssembly (JavaScript `eval()` stays blocked) — alongside HSTS, `X-Frame-Options`, `nosniff` and `Referrer-Policy`
-- Pending device approval requests are capped at 5 per user, expire after 10 minutes, and require a 6-digit code derived from the new device's own public key
-- Session tokens are long-lived (1 year) but individually revocable: logout revokes exactly that session, and an admin can invalidate every session for a user at once
+- Pending device approval requests are capped at 5 active requests per user, expire after 10 minutes, are source-rate-limited, and require a 6-digit code derived from the new device's own public key
+- Session tokens expire after 12 hours, live only in browser memory, and are individually revocable: logout revokes exactly that session, and an admin can invalidate every session for a user at once

@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS builder
+FROM oven/bun:1.3.11@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS builder
 WORKDIR /app
 
 COPY package.json bun.lock ./
@@ -14,8 +14,8 @@ COPY tsconfig.base.json ./
 WORKDIR /app/apps/frontend
 RUN bun run vite build
 
-FROM nginx:alpine AS runner
+FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5fb5fe29279560cdc55e91425133104c7fbe6 AS runner
 COPY --from=builder /app/apps/frontend/dist /usr/share/nginx/html
 COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/frontend/security-headers.conf /etc/nginx/snippets/security-headers.conf
-EXPOSE 80
+EXPOSE 8080

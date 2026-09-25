@@ -1,12 +1,15 @@
-import { describe, it, expect } from 'bun:test'
+import { beforeEach, describe, it, expect } from 'bun:test'
 import { createCallerFactory } from '@trpc/server/unstable-core-do-not-import'
 import { randomUUID } from 'crypto'
 import { deviceVerificationCode } from '@tasks/shared'
 import { appRouter } from '../src/router.js'
 import { makeTestDb } from './helpers.js'
 import { devices, users } from '../src/db/schema.js'
+import { resetAllRateLimits } from '../src/lib/rateLimit.js'
 
 const createCaller = createCallerFactory()(appRouter)
+
+beforeEach(() => resetAllRateLimits())
 
 async function seedUser(db: ReturnType<typeof makeTestDb>) {
   const userId = randomUUID()
@@ -43,7 +46,7 @@ describe('devices.revoke — token invalidation', () => {
 })
 
 describe('devices.requestApproval rate limit', () => {
-  it('rejects when user already has 5 pending device requests', async () => {
+  it('returns a non-resolving decoy when a user already has 5 pending requests', async () => {
     const db = makeTestDb()
     await seedUser(db)
     const caller = createCaller({ db, userId: null })
@@ -53,10 +56,24 @@ describe('devices.requestApproval rate limit', () => {
       await caller.devices.requestApproval({ username: 'u', name: `device-${i}`, devicePublicKey: `pk${i}` })
     }
 
-    // 6th request should fail
-    await expect(
-      caller.devices.requestApproval({ username: 'u', name: 'overflow', devicePublicKey: 'pkX' })
-    ).rejects.toThrow()
+    const overflow = await caller.devices.requestApproval({ username: 'u', name: 'overflow', devicePublicKey: 'pkX' })
+    expect(await caller.devices.checkApproval(overflow)).toBeNull()
+    expect(await db.select().from(devices)).toHaveLength(5)
+  })
+
+  it('removes expired requests before applying the per-account quota', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const caller = createCaller({ db, userId: null })
+    for (let i = 0; i < 5; i++) {
+      await caller.devices.requestApproval({ username: 'u', name: `stale-${i}`, devicePublicKey: `pk${i}` })
+    }
+    await db.update(devices).set({ createdAt: Date.now() - 11 * 60 * 1000 }).where(eq(devices.userId, userId))
+
+    const fresh = await caller.devices.requestApproval({ username: 'u', name: 'legitimate', devicePublicKey: 'fresh-pk' })
+    const [stored] = await db.select().from(devices).where(eq(devices.id, fresh.deviceId))
+    expect(stored?.name).toBe('legitimate')
+    expect(await db.select().from(devices)).toHaveLength(1)
   })
 })
 
@@ -187,5 +204,19 @@ describe('devices.requestApproval — account enumeration', () => {
     expect(await caller.devices.checkApproval({ deviceId: unknown.deviceId, pendingToken: unknown.pendingToken })).toBeNull()
     // No row was created for the nonexistent user.
     expect(await db.select().from(devices)).toHaveLength(1)
+  })
+
+  it('keeps the same response behavior after a real account reaches its quota', async () => {
+    const db = makeTestDb()
+    await seedUser(db)
+    const caller = createCaller({ db, userId: null })
+    for (let i = 0; i < 5; i++) {
+      await caller.devices.requestApproval({ username: 'u', name: `a-${i}`, devicePublicKey: `pk-${i}` })
+    }
+    const knownFull = await caller.devices.requestApproval({ username: 'u', name: 'a', devicePublicKey: 'pk-x' })
+    const unknown = await caller.devices.requestApproval({ username: 'missing', name: 'a', devicePublicKey: 'pk-y' })
+    expect(Object.keys(knownFull).sort()).toEqual(Object.keys(unknown).sort())
+    expect(await caller.devices.checkApproval(knownFull)).toBeNull()
+    expect(await caller.devices.checkApproval(unknown)).toBeNull()
   })
 })

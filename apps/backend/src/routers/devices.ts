@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { eq, and, gt, count } from 'drizzle-orm'
+import { eq, and, gt, lt, count } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID, timingSafeEqual } from 'crypto'
 import { deviceVerificationCode } from '@tasks/shared'
@@ -7,9 +7,12 @@ import { router, publicProcedure, protectedProcedure } from '../router.js'
 import { devices, users } from '../db/schema.js'
 import { MAX_ID, MAX_KEY_BLOB, MAX_KEY_MATERIAL, MAX_USERNAME } from '../lib/limits.js'
 import { signToken } from '../lib/jwt.js'
+import { recordHit, withinLimits, type RateLimit } from '../lib/rateLimit.js'
 
 /** A pending request older than this can no longer be approved. */
 const PENDING_TTL_MS = 10 * 60 * 1000
+const REQUEST_WINDOW_MS = 15 * 60 * 1000
+const MAX_REQUESTS_PER_SOURCE = 30
 
 function codesMatch(a: string, b: string): boolean {
   const ab = Buffer.from(a)
@@ -21,19 +24,44 @@ export const devicesRouter = router({
   requestApproval: publicProcedure
     .input(z.object({ username: z.string().max(MAX_USERNAME), name: z.string().max(100), devicePublicKey: z.string().max(MAX_KEY_MATERIAL) }))
     .mutation(async ({ ctx, input }) => {
+      const sourceLimits: RateLimit[] = [{
+        key: `device-request:ip:${ctx.clientIp ?? 'missing-proxy-address'}`,
+        limit: MAX_REQUESTS_PER_SOURCE,
+        windowMs: REQUEST_WINDOW_MS,
+      }]
+      if (!withinLimits(sourceLimits)) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many device requests. Try again later.' })
+      }
+      recordHit(sourceLimits)
+
       const [user] = await ctx.db.select().from(users).where(eq(users.username, input.username))
       // Unknown usernames get a well-formed but unapprovable handle. Returning
       // NOT_FOUND here would confirm which accounts exist, defeating the decoy-salt
       // protection on getLoginChallenge. checkApproval will simply never resolve it.
       if (!user) return { deviceId: randomUUID(), pendingToken: randomUUID() }
-      const [{ value: pendingCount }] = await ctx.db
-        .select({ value: count() })
-        .from(devices)
-        .where(and(eq(devices.userId, user.id), eq(devices.status, 'pending')))
-      if (pendingCount >= 5) throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many pending device requests' })
       const id = randomUUID()
       const pendingToken = randomUUID()
-      await ctx.db.insert(devices).values({ id, userId: user.id, publicKey: input.devicePublicKey, name: input.name, status: 'pending', pendingToken, createdAt: Date.now() })
+      const created = ctx.db.transaction(tx => {
+        const cutoff = Date.now() - PENDING_TTL_MS
+        // Expired requests are unapprovable; remove them before enforcing the quota
+        // so anonymous callers cannot permanently consume every enrollment slot.
+        tx.delete(devices).where(and(
+          eq(devices.userId, user.id),
+          eq(devices.status, 'pending'),
+          lt(devices.createdAt, cutoff),
+        )).run()
+        const [{ value: pendingCount }] = tx
+          .select({ value: count() })
+          .from(devices)
+          .where(and(eq(devices.userId, user.id), eq(devices.status, 'pending')))
+          .all()
+        if (pendingCount >= 5) return false
+        tx.insert(devices).values({ id, userId: user.id, publicKey: input.devicePublicKey, name: input.name, status: 'pending', pendingToken, createdAt: Date.now() }).run()
+        return true
+      })
+      // Preserve the response shape for real, full accounts and unknown usernames.
+      // The returned decoy handle can never resolve because no row was inserted.
+      if (!created) return { deviceId: id, pendingToken }
       return { deviceId: id, pendingToken }
     }),
 

@@ -59,7 +59,7 @@ export function deriveServerPassword(stretchKey: Uint8Array): string {
 export async function deviceVerificationCode(devicePublicKeyB64: string): Promise<string> {
   await sodium.ready
   // BLAKE2b output must be >= crypto_generichash_BYTES_MIN (16), so hash wide and truncate.
-  const digest = sodium.crypto_generichash(32, sodium.from_string(`device-pairing:${devicePublicKeyB64}`))
+  const digest = sodium.crypto_generichash(32, sodium.from_string(`device-pairing:${devicePublicKeyB64}`), null)
   const n = ((digest[0] << 24) | (digest[1] << 16) | (digest[2] << 8) | digest[3]) >>> 0
   return String(n % 1_000_000).padStart(6, '0')
 }
@@ -73,7 +73,7 @@ export async function deviceVerificationCode(devicePublicKeyB64: string): Promis
  */
 export async function publicKeyFingerprint(publicKeyB64: string): Promise<string> {
   await sodium.ready
-  const digest = sodium.crypto_generichash(32, sodium.from_string(`pubkey-fp:${publicKeyB64}`))
+  const digest = sodium.crypto_generichash(32, sodium.from_string(`pubkey-fp:${publicKeyB64}`), null)
   // 10 bytes is plenty to compare aloud; 80 bits of collision resistance.
   const hex = Array.from(digest.subarray(0, 10), b => b.toString(16).padStart(2, '0')).join('')
   return (hex.match(/.{4}/g) ?? []).join(' ')

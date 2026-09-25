@@ -56,7 +56,9 @@ export async function signToken(userId: string, tokenVersion: number, deviceId?:
     .setProtectedHeader({ alg: 'HS256' })
     .setJti(randomUUID())
     .setIssuedAt()
-    .setExpirationTime('1y')
+    // Keep a stolen browser token useful for hours, not a year. Explicit logout and
+    // tokenVersion revocation still terminate it earlier.
+    .setExpirationTime('12h')
     .sign(getSecret())
 }
 

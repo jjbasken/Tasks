@@ -29,6 +29,33 @@ describe('lists.create + list', () => {
   })
 })
 
+describe('lists.updateEncryptedName', () => {
+  it('lets the owner replace legacy name ciphertext', async () => {
+    const db = makeTestDb()
+    const aliceId = await seedUser(db, 'alice')
+    const caller = createCaller({ db, userId: aliceId })
+    await caller.lists.create({ encryptedName: 'legacy-ciphertext', encryptedListKey: 'alice-key' })
+    const list = (await caller.lists.list())[0]
+
+    await caller.lists.updateEncryptedName({ listId: list.id, encryptedName: 'list-key-ciphertext' })
+    expect((await caller.lists.list())[0].encryptedName).toBe('list-key-ciphertext')
+  })
+
+  it('rejects name migration by a non-owner member', async () => {
+    const db = makeTestDb()
+    const aliceId = await seedUser(db, 'alice')
+    const bobId = await seedUser(db, 'bob')
+    const owner = createCaller({ db, userId: aliceId })
+    await owner.lists.create({ encryptedName: 'legacy-ciphertext', encryptedListKey: 'alice-key' })
+    const list = (await owner.lists.list())[0]
+    await owner.lists.invite({ listId: list.id, inviteeUsername: 'bob', encryptedListKey: 'bob-key' })
+
+    const member = createCaller({ db, userId: bobId })
+    await expect(member.lists.updateEncryptedName({ listId: list.id, encryptedName: 'attacker-value' })).rejects.toThrow('FORBIDDEN')
+    expect((await owner.lists.list())[0].encryptedName).toBe('legacy-ciphertext')
+  })
+})
+
 describe('lists.invite', () => {
   it('adds a second member with their own encrypted list key', async () => {
     const db = makeTestDb()

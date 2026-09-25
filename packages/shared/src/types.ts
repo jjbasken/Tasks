@@ -21,3 +21,12 @@ export type UserPublicInfo = {
   username: string
   publicKey: string  // base64 curve25519
 }
+
+/** Versioned account material transferred only between an approved device pair. */
+export type DeviceKeyBundle = {
+  version: 1
+  privateKey: string
+  stretchKey: string
+  publicKey: string
+  isAdmin: boolean
+}

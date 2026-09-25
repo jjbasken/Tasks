@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { session } from '../lib/session.js'
-import { sealToPublicKey } from '@tasks/shared'
+import { sealToPublicKey, toBase64, type DeviceKeyBundle } from '@tasks/shared'
 import { useDeviceList, usePendingDevices, useApproveDevice, useRevokeDevice } from '../hooks/useDevices.js'
 import { Sidebar } from '../components/Sidebar.js'
 
@@ -32,10 +32,12 @@ export function DevicesPage() {
     if (!confirming) return
     setError(null)
     const privateKey = session.getPrivateKey()
-    if (!privateKey) { setError('Session expired — please log in again'); return }
+    const stretchKey = session.getStretchKey()
+    const publicKey = session.getPublicKey()
+    if (!privateKey || !stretchKey || !publicKey) { setError('Session expired — please log in again'); return }
     try {
-      const privateKeyBytes = new TextEncoder().encode(privateKey)
-      const sealed = sealToPublicKey(privateKeyBytes, confirming.publicKey)
+      const bundle: DeviceKeyBundle = { version: 1, privateKey, stretchKey: toBase64(stretchKey), publicKey, isAdmin: session.getIsAdmin() }
+      const sealed = sealToPublicKey(new TextEncoder().encode(JSON.stringify(bundle)), confirming.publicKey)
       await approve.mutateAsync({
         deviceId: confirming.id,
         verificationCode: code.trim(),

@@ -9,7 +9,9 @@
   "scripts": {
     "dev:backend": "bun --filter backend dev",
     "dev:frontend": "bun --filter frontend dev",
-    "test": "bun --filter shared test && bun --filter backend test"
+    "test": "bun --filter shared test && bun --filter backend test",
+    "typecheck": "bun run --filter '@tasks/shared' typecheck && bun run --filter backend typecheck && bun run --filter frontend typecheck",
+    "build": "bun run --filter frontend build"
   },
   "devDependencies": {
     "@types/bun": "^1.3.11"
