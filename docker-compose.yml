@@ -7,6 +7,7 @@ services:
       - "3000:8080"
     depends_on:
       - backend
+    restart: unless-stopped
     networks:
       default:
       # Fixed so it can never be handed cloudflared's trusted address when it
@@ -33,6 +34,7 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     volumes:
       - ${DB_DATA_PATH:-./data}:/data
+    restart: unless-stopped
     read_only: true
     tmpfs:
       - /tmp
