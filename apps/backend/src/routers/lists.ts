@@ -38,6 +38,18 @@ export const listsRouter = router({
       return { id: listId }
     }),
 
+  // Owner-only migration path for legacy names that were encrypted with the
+  // owner's stretch key. New names are encrypted with the list key so every
+  // member can decrypt the same metadata.
+  updateEncryptedName: protectedProcedure
+    .input(z.object({ listId: z.string().max(MAX_ID), encryptedName: z.string().max(MAX_NAME_BLOB) }))
+    .mutation(async ({ ctx, input }) => {
+      const [list] = await ctx.db.select({ ownerId: lists.ownerId }).from(lists).where(eq(lists.id, input.listId))
+      if (!list || list.ownerId !== ctx.userId) throw new TRPCError({ code: 'FORBIDDEN' })
+      await ctx.db.update(lists).set({ encryptedName: input.encryptedName }).where(eq(lists.id, input.listId))
+      return { ok: true }
+    }),
+
   // Owner-only. Every member holds the plaintext list key, so a member who could
   // invite would be able to widen the audience of someone else's list — handing a
   // third party a membership row the owner never approved and cannot see the

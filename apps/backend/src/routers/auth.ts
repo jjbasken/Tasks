@@ -26,8 +26,10 @@ const MAX_CHALLENGES_PER_IP = 120
 function loginLimits(username: string, clientIp: string | null | undefined): RateLimit[] {
   const limits: RateLimit[] = [
     { key: `login:user:${username.toLowerCase()}`, limit: MAX_FAILURES_PER_USERNAME, windowMs: WINDOW_MS },
+    // Requests that did not traverse the trusted reverse proxy share one bucket.
+    // This fails closed instead of silently disabling source-level throttling.
+    { key: `login:ip:${clientIp ?? 'missing-proxy-address'}`, limit: MAX_FAILURES_PER_IP, windowMs: WINDOW_MS },
   ]
-  if (clientIp) limits.push({ key: `login:ip:${clientIp}`, limit: MAX_FAILURES_PER_IP, windowMs: WINDOW_MS })
   return limits
 }
 
@@ -62,11 +64,9 @@ export const authRouter = router({
   getLoginChallenge: publicProcedure
     .input(z.object({ username: z.string().max(MAX_USERNAME) }))
     .query(async ({ ctx, input }) => {
-      if (ctx.clientIp) {
-        const limits: RateLimit[] = [{ key: `challenge:ip:${ctx.clientIp}`, limit: MAX_CHALLENGES_PER_IP, windowMs: WINDOW_MS }]
-        if (!withinLimits(limits)) throw tooManyRequests()
-        recordHit(limits)
-      }
+      const limits: RateLimit[] = [{ key: `challenge:ip:${ctx.clientIp ?? 'missing-proxy-address'}`, limit: MAX_CHALLENGES_PER_IP, windowMs: WINDOW_MS }]
+      if (!withinLimits(limits)) throw tooManyRequests()
+      recordHit(limits)
       const [user] = await ctx.db.select({ kdfSalt: users.kdfSalt }).from(users).where(eq(users.username, input.username))
       // Return only the KDF salt (needed to derive the login key). Encrypted key
       // material is handed out by `login`, after the password has been verified.

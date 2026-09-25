@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { session } from '../lib/session.js'
 import { trpc } from '../lib/trpc.js'
 import {
-  initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair,
+  initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair, fromBase64,
   generateListKey, encryptSymmetric, decryptSymmetric,
   type EncryptedBlob,
 } from '@tasks/shared'
@@ -13,6 +13,7 @@ type AuthContextType = {
   login: (username: string, passphrase: string) => Promise<void>
   register: (username: string, email: string, passphrase: string, isAdmin?: boolean) => Promise<void>
   logout: () => Promise<void>
+  activateSession: (isAdmin: boolean) => void
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const listKey = generateListKey()
     const encPrivKey = encryptSymmetric(privateKey, stretchKey)
     const encListKey = encryptSymmetric(listKey, stretchKey)
-    const encListName = encryptSymmetric('Personal', stretchKey)
+    const encListName = encryptSymmetric('Personal', fromBase64(listKey))
     const serverPassword = deriveServerPassword(stretchKey)
     await utils.client.auth.register.mutate({
       username, email,
@@ -76,8 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(false)
   }
 
+  function activateSession(admin: boolean) {
+    session.setIsAdmin(admin)
+    setIsAdmin(admin)
+    setIsLoggedIn(true)
+  }
+
   return (
-    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, register, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, register, logout, activateSession }}>
       {children}
     </AuthContext.Provider>
   )

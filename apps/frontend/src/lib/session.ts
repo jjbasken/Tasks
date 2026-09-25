@@ -1,5 +1,5 @@
-// Key material lives in localStorage — survives tab/app closes.
-// Explicitly cleared on logout.
+// Sensitive session material is memory-only. A reload requires login again, but
+// bearer tokens and plaintext keys are never written to Web Storage.
 
 const KEYS = {
   token: 'tasks:token',
@@ -9,36 +9,49 @@ const KEYS = {
   isAdmin: 'tasks:isAdmin',
 } as const
 
+let token: string | null = null
+let stretchKey: Uint8Array | null = null
+let privateKey: string | null = null
+let publicKey: string | null = null
+let isAdmin = false
+
+// One-time cleanup for versions that persisted plaintext keys and year-long tokens.
+if (typeof localStorage !== 'undefined') {
+  Object.values(KEYS).forEach(k => localStorage.removeItem(k))
+}
+
 export const session = {
-  setToken: (t: string) => localStorage.setItem(KEYS.token, t),
+  setToken: (t: string) => { token = t },
   getToken: () => {
-    const token = localStorage.getItem(KEYS.token)
     if (!token) return null
     try {
       const payload = JSON.parse(atob(token.split('.')[1]))
       if (payload.exp && payload.exp * 1000 < Date.now()) {
-        Object.values(KEYS).forEach(k => localStorage.removeItem(k))
+        session.clear()
         return null
       }
     } catch { /* malformed token */ }
     return token
   },
 
-  setStretchKey: (k: Uint8Array) => localStorage.setItem(KEYS.stretchKey, btoa(String.fromCharCode(...k))),
-  getStretchKey: (): Uint8Array | null => {
-    const v = localStorage.getItem(KEYS.stretchKey)
-    if (!v) return null
-    return Uint8Array.from(atob(v), c => c.charCodeAt(0))
+  setStretchKey: (k: Uint8Array) => { stretchKey = new Uint8Array(k) },
+  getStretchKey: (): Uint8Array | null => stretchKey,
+
+  setPrivateKey: (k: string) => { privateKey = k },
+  getPrivateKey: () => privateKey,
+
+  setPublicKey: (k: string) => { publicKey = k },
+  getPublicKey: () => publicKey,
+
+  setIsAdmin: (v: boolean) => { isAdmin = v },
+  getIsAdmin: () => isAdmin,
+
+  clear: () => {
+    stretchKey?.fill(0)
+    token = null
+    stretchKey = null
+    privateKey = null
+    publicKey = null
+    isAdmin = false
   },
-
-  setPrivateKey: (k: string) => localStorage.setItem(KEYS.privateKey, k),
-  getPrivateKey: () => localStorage.getItem(KEYS.privateKey),
-
-  setPublicKey: (k: string) => localStorage.setItem(KEYS.publicKey, k),
-  getPublicKey: () => localStorage.getItem(KEYS.publicKey),
-
-  setIsAdmin: (v: boolean) => localStorage.setItem(KEYS.isAdmin, v ? '1' : '0'),
-  getIsAdmin: () => localStorage.getItem(KEYS.isAdmin) === '1',
-
-  clear: () => Object.values(KEYS).forEach(k => localStorage.removeItem(k)),
 }

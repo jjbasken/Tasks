@@ -40,7 +40,7 @@ export function ListsPage() {
     const stretchKey = session.getStretchKey()
     if (!stretchKey) return
     const listKey = generateListKey()
-    const encName = encryptSymmetric(newListName, stretchKey)
+    const encName = encryptSymmetric(newListName, fromBase64(listKey))
     const encKey = encryptSymmetric(listKey, stretchKey)
     await createList.mutateAsync({ encryptedName: JSON.stringify(encName), encryptedListKey: JSON.stringify(encKey) })
     setNewListName('')

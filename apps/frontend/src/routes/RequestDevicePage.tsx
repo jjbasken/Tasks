@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
 import { pinPublicKey } from '../lib/keyPinning.js'
-import { initCrypto, generateKeypair, openSeal, deviceVerificationCode } from '@tasks/shared'
+import { initCrypto, generateKeypair, openSeal, deviceVerificationCode, fromBase64, type DeviceKeyBundle } from '@tasks/shared'
+import { useAuth } from '../hooks/useAuth.js'
 
 type Stage = 'form' | 'waiting'
 
@@ -17,6 +18,7 @@ type PendingState = {
 
 export function RequestDevicePage() {
   const navigate = useNavigate()
+  const { activateSession } = useAuth()
   const utils = trpc.useUtils()
   const requestApproval = trpc.devices.requestApproval.useMutation()
 
@@ -66,29 +68,41 @@ export function RequestDevicePage() {
     async function poll() {
       const p = pendingRef.current
       if (!p) return
+      let result
       try {
-        const result = await utils.client.devices.checkApproval.mutate({
+        result = await utils.client.devices.checkApproval.mutate({
           deviceId: p.deviceId,
           pendingToken: p.pendingToken,
         })
-        if (!result) return
-
-        const unsealedBytes = openSeal(result.sealedUserPrivateKey, p.devicePublicKey, p.devicePrivateKey)
-        const userPrivateKeyB64 = new TextDecoder().decode(unsealedBytes)
-
-        session.setToken(result.token)
-        session.setPrivateKey(userPrivateKeyB64)
-
-        const userInfo = await utils.users.search.fetch({ username: p.username })
-        if (userInfo) {
-          session.setPublicKey(userInfo.publicKey)
-          pinPublicKey(p.username, userInfo.publicKey)
-        }
-
-        clearInterval(interval)
-        navigate('/tasks')
       } catch {
         // polling errors are expected — keep waiting
+        return
+      }
+      if (!result) return
+
+      // checkApproval hands out the token exactly once, so from here on a failure
+      // is final: stop polling and tell the user instead of waiting forever.
+      clearInterval(interval)
+      try {
+        const unsealedBytes = openSeal(result.sealedUserPrivateKey, p.devicePublicKey, p.devicePrivateKey)
+        const decoded = new TextDecoder().decode(unsealedBytes)
+        const bundle = JSON.parse(decoded) as DeviceKeyBundle
+        if (bundle.version !== 1 || typeof bundle.privateKey !== 'string' || typeof bundle.stretchKey !== 'string' || typeof bundle.publicKey !== 'string' || typeof bundle.isAdmin !== 'boolean') {
+          throw new Error('The approving device sent an unsupported key bundle')
+        }
+
+        session.setToken(result.token)
+        session.setPrivateKey(bundle.privateKey)
+        session.setStretchKey(fromBase64(bundle.stretchKey))
+        session.setPublicKey(bundle.publicKey)
+        pinPublicKey(p.username, bundle.publicKey)
+        activateSession(bundle.isAdmin)
+        navigate('/tasks')
+      } catch (err: any) {
+        session.clear()
+        pendingRef.current = null
+        setError(err?.message ?? 'Could not open the approved key bundle')
+        setStage('form')
       }
     }
 

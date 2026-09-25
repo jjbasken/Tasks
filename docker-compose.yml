@@ -4,28 +4,62 @@ services:
       context: .
       dockerfile: apps/frontend/Dockerfile
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       - backend
+    networks:
+      - default
+      - edge
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   backend:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       DATABASE_URL: /data/db.sqlite
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     volumes:
       - ${DB_DATA_PATH:-./data}:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.9.1@sha256:b269e8abd07a5bf6f3f4be65d5050b2174eca89c56a0241a8ff32a16aec454e4
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     depends_on:
       - frontend
+    # Fixed address: nginx trusts CF-Connecting-IP only from this peer.
+    networks:
+      edge:
+        ipv4_address: 172.30.255.2
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  # Tunnel ingress only. cloudflared reaches nginx here and has no route to the
+  # backend. Keep this subnet in sync with set_real_ip_from in nginx.conf.
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.255.0/29
