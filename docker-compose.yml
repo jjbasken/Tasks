@@ -8,8 +8,11 @@ services:
     depends_on:
       - backend
     networks:
-      - default
-      - edge
+      default:
+      # Fixed so it can never be handed cloudflared's trusted address when it
+      # happens to join the network first.
+      edge:
+        ipv4_address: 10.213.47.3
     read_only: true
     tmpfs:
       - /tmp
