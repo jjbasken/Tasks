@@ -96,7 +96,9 @@ source addresses trustworthy for authentication rate limits.
 
 The compose file includes a `cloudflared` service. Set `CLOUDFLARE_TUNNEL_TOKEN` in your `.env` and configure the tunnel in the Cloudflare dashboard to route your domain to `http://frontend:8080`.
 
-If you prefer a traditional reverse proxy (Caddy, nginx), remove the `cloudflared` service and proxy to `http://localhost:3000`.
+cloudflared runs at a fixed address (`172.30.255.2`) on a dedicated `edge` network, and nginx trusts the `CF-Connecting-IP` header only from that address, so rate limits apply per real client rather than to the tunnel as a whole. If `172.30.255.0/29` collides with a network on your host, change it in both `docker-compose.yml` and `apps/frontend/nginx.conf`.
+
+If you prefer a traditional reverse proxy (Caddy, nginx), remove the `cloudflared` service and proxy to `http://localhost:3000`. Point `set_real_ip_from`/`real_ip_header` in `apps/frontend/nginx.conf` at your proxy; otherwise every client shares your proxy's rate-limit bucket.
 
 ### First-Time Setup
 

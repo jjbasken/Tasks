@@ -41,7 +41,7 @@ export const devicesRouter = router({
       if (!user) return { deviceId: randomUUID(), pendingToken: randomUUID() }
       const id = randomUUID()
       const pendingToken = randomUUID()
-      const created = ctx.db.transaction(tx => {
+      ctx.db.transaction(tx => {
         const cutoff = Date.now() - PENDING_TTL_MS
         // Expired requests are unapprovable; remove them before enforcing the quota
         // so anonymous callers cannot permanently consume every enrollment slot.
@@ -55,13 +55,11 @@ export const devicesRouter = router({
           .from(devices)
           .where(and(eq(devices.userId, user.id), eq(devices.status, 'pending')))
           .all()
-        if (pendingCount >= 5) return false
+        if (pendingCount >= 5) return
         tx.insert(devices).values({ id, userId: user.id, publicKey: input.devicePublicKey, name: input.name, status: 'pending', pendingToken, createdAt: Date.now() }).run()
-        return true
       })
-      // Preserve the response shape for real, full accounts and unknown usernames.
-      // The returned decoy handle can never resolve because no row was inserted.
-      if (!created) return { deviceId: id, pendingToken }
+      // A full account gets the same response as a real request (and as an unknown
+      // username); no row was inserted for it, so the handle never resolves.
       return { deviceId: id, pendingToken }
     }),
 

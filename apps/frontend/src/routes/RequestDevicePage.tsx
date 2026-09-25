@@ -68,13 +68,22 @@ export function RequestDevicePage() {
     async function poll() {
       const p = pendingRef.current
       if (!p) return
+      let result
       try {
-        const result = await utils.client.devices.checkApproval.mutate({
+        result = await utils.client.devices.checkApproval.mutate({
           deviceId: p.deviceId,
           pendingToken: p.pendingToken,
         })
-        if (!result) return
+      } catch {
+        // polling errors are expected — keep waiting
+        return
+      }
+      if (!result) return
 
+      // checkApproval hands out the token exactly once, so from here on a failure
+      // is final: stop polling and tell the user instead of waiting forever.
+      clearInterval(interval)
+      try {
         const unsealedBytes = openSeal(result.sealedUserPrivateKey, p.devicePublicKey, p.devicePrivateKey)
         const decoded = new TextDecoder().decode(unsealedBytes)
         const bundle = JSON.parse(decoded) as DeviceKeyBundle
@@ -88,11 +97,12 @@ export function RequestDevicePage() {
         session.setPublicKey(bundle.publicKey)
         pinPublicKey(p.username, bundle.publicKey)
         activateSession(bundle.isAdmin)
-
-        clearInterval(interval)
         navigate('/tasks')
-      } catch {
-        // polling errors are expected — keep waiting
+      } catch (err: any) {
+        session.clear()
+        pendingRef.current = null
+        setError(err?.message ?? 'Could not open the approved key bundle')
+        setStage('form')
       }
     }
 
