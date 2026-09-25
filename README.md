@@ -52,7 +52,7 @@ CLOUDFLARE_TUNNEL_TOKEN=<your-tunnel-token>
 
 # Optional
 CORS_ORIGIN=https://your-domain.com   # defaults to http://localhost:3000
-DB_DATA_PATH=./data                   # path on the host for the SQLite volume
+DB_DATA_PATH=./data                   # host path for the SQLite volume (absolute if a manager like Dockhand deploys)
 ```
 
 Generate a strong `JWT_SECRET`:
@@ -89,6 +89,14 @@ This starts three services:
 | `cloudflared` | — | Cloudflare Tunnel (exposes frontend publicly) |
 
 The SQLite database is stored at `DB_DATA_PATH` (default: `./data/db.sqlite`).
+
+If a container-based manager (Dockhand, Portainer, etc.) deploys the stack, set
+`DB_DATA_PATH` to an absolute host path such as `/home/you/tasks/data`. These
+tools run Compose inside their own container, where the project folder is
+mounted at a different path, so `./data` resolves to a different host directory.
+Docker then creates it empty and root-owned, and the backend fails with
+`SQLITE_CANTOPEN`.
+
 Port 3001 is deliberately not published on the host; this keeps proxy-derived
 source addresses trustworthy for authentication rate limits.
 
