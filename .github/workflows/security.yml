@@ -63,3 +63,25 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           hide-progress: true
+
+  tunnel-scan:
+    name: Container scan (tunnel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read deployed tunnel image
+        id: tunnel
+        run: |
+          image=$(awk '$1 == "image:" {print $2}' docker-compose.yml)
+          test -n "$image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.tunnel.outputs.image }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          hide-progress: true
