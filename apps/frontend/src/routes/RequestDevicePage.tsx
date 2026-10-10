@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { trpc } from '../lib/trpc.js'
-import { session } from '../lib/session.js'
+import { useAuth, type DeviceKeyBundle } from '../hooks/useAuth.js'
 import { pinPublicKey } from '../lib/keyPinning.js'
-import { initCrypto, generateKeypair, openSeal, deviceVerificationCode, fromBase64, type DeviceKeyBundle } from '@tasks/shared'
-import { useAuth } from '../hooks/useAuth.js'
+import { initCrypto, generateKeypair, openSeal, deviceVerificationCode } from '@tasks/shared'
 
 type Stage = 'form' | 'waiting'
 
@@ -18,7 +17,7 @@ type PendingState = {
 
 export function RequestDevicePage() {
   const navigate = useNavigate()
-  const { activateSession } = useAuth()
+  const { unlockDevice } = useAuth()
   const utils = trpc.useUtils()
   const requestApproval = trpc.devices.requestApproval.useMutation()
 
@@ -65,48 +64,51 @@ export function RequestDevicePage() {
   useEffect(() => {
     if (stage !== 'waiting') return
 
+    let polling = false
+    let received: { token: string; sealedUserPrivateKey: string } | null = null
     async function poll() {
+      if (polling) return
       const p = pendingRef.current
       if (!p) return
-      let result
+      polling = true
       try {
-        result = await utils.client.devices.checkApproval.mutate({
+        const result = received ?? await utils.client.devices.checkApproval.mutate({
           deviceId: p.deviceId,
           pendingToken: p.pendingToken,
         })
-      } catch {
-        // polling errors are expected — keep waiting
-        return
-      }
-      if (!result) return
+        if (!result || pendingRef.current !== p) return
+        received = result
 
-      // checkApproval hands out the token exactly once, so from here on a failure
-      // is final: stop polling and tell the user instead of waiting forever.
-      clearInterval(interval)
-      try {
         const unsealedBytes = openSeal(result.sealedUserPrivateKey, p.devicePublicKey, p.devicePrivateKey)
-        const decoded = new TextDecoder().decode(unsealedBytes)
-        const bundle = JSON.parse(decoded) as DeviceKeyBundle
-        if (bundle.version !== 1 || typeof bundle.privateKey !== 'string' || typeof bundle.stretchKey !== 'string' || typeof bundle.publicKey !== 'string' || typeof bundle.isAdmin !== 'boolean') {
-          throw new Error('The approving device sent an unsupported key bundle')
+        let bundle: DeviceKeyBundle
+        try {
+          bundle = JSON.parse(new TextDecoder().decode(unsealedBytes))
+          if (typeof bundle.privateKey !== 'string' || typeof bundle.publicKey !== 'string' || typeof bundle.stretchKey !== 'string') throw new Error()
+        } catch {
+          throw new Error('The approving device is running an older version. Update it and request access again.')
         }
-
-        session.setToken(result.token)
-        session.setPrivateKey(bundle.privateKey)
-        session.setStretchKey(fromBase64(bundle.stretchKey))
-        session.setPublicKey(bundle.publicKey)
+        await unlockDevice(result.token, bundle)
         pinPublicKey(p.username, bundle.publicKey)
-        activateSession(bundle.isAdmin)
+
+        clearInterval(interval)
         navigate('/tasks')
       } catch (err: any) {
-        session.clear()
-        pendingRef.current = null
-        setError(err?.message ?? 'Could not open the approved key bundle')
-        setStage('form')
+        if (err?.message?.includes('older version')) {
+          clearInterval(interval)
+          setError(err.message)
+          setStage('form')
+        }
+      } finally {
+        polling = false
       }
     }
 
     const interval = setInterval(poll, 3000)
+    const expiry = setTimeout(() => {
+      pendingRef.current = null
+      setError('This request expired. Request access again.')
+      setStage('form')
+    }, 10 * 60 * 1000)
 
     function onVisibilityChange() {
       if (document.visibilityState === 'visible') poll()
@@ -115,6 +117,7 @@ export function RequestDevicePage() {
 
     return () => {
       clearInterval(interval)
+      clearTimeout(expiry)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [stage])

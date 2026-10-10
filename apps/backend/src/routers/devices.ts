@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { eq, and, gt, lt, count } from 'drizzle-orm'
+import { eq, and, gt, lte, count } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID, timingSafeEqual } from 'crypto'
 import { deviceVerificationCode } from '@tasks/shared'
@@ -48,7 +48,7 @@ export const devicesRouter = router({
         tx.delete(devices).where(and(
           eq(devices.userId, user.id),
           eq(devices.status, 'pending'),
-          lt(devices.createdAt, cutoff),
+          lte(devices.createdAt, cutoff),
         )).run()
         const [{ value: pendingCount }] = tx
           .select({ value: count() })
@@ -57,7 +57,7 @@ export const devicesRouter = router({
           .all()
         if (pendingCount >= 5) return
         tx.insert(devices).values({ id, userId: user.id, publicKey: input.devicePublicKey, name: input.name, status: 'pending', pendingToken, createdAt: Date.now() }).run()
-      })
+      }, { behavior: 'immediate' })
       // A full account gets the same response as a real request (and as an unknown
       // username); no row was inserted for it, so the handle never resolves.
       return { deviceId: id, pendingToken }

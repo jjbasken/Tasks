@@ -1,66 +1,58 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { trpc } from '../lib/trpc.js'
-import { offlineQueue } from '../lib/offlineQueue.js'
+import { applyQueuedChanges, offlineQueue } from '../lib/offlineQueue.js'
+import { session } from '../lib/session.js'
+import { drainQueue, sendQueuedMutation } from '../lib/syncQueue.js'
+import { useAuth } from './useAuth.js'
 
 export function useOfflineSync() {
+  const { isLoggedIn } = useAuth()
   const utils = trpc.useUtils()
   const syncing = useRef(false)
-  const [pendingCount, setPendingCount] = useState(() => offlineQueue.count())
+  const [error, setError] = useState<string | null>(null)
+  const revision = useSyncExternalStore(offlineQueue.subscribe, offlineQueue.getRevision)
+  let pendingCount = 0
+  try { pendingCount = offlineQueue.count() } catch { /* sync reports the storage error */ }
 
-  async function sync() {
-    if (syncing.current || !navigator.onLine) return
-    const queue = offlineQueue.getAll()
-    if (queue.length === 0) return
-
+  const sync = useCallback(async () => {
+    const userId = session.getUserId()
+    if (syncing.current || !navigator.onLine || !userId || !isLoggedIn) return
     syncing.current = true
-    const affectedListIds = new Set<string>()
-
+    setError(null)
+    const affected = new Set<string>()
     try {
-      for (const m of queue) {
-        if (!navigator.onLine) break
-        try {
-          if (m.type === 'create') {
-            await utils.client.tasks.create.mutate({ listId: m.listId, encryptedPayload: m.encryptedPayload })
-          } else if (m.type === 'update') {
-            await utils.client.tasks.update.mutate({ taskId: m.taskId, encryptedPayload: m.encryptedPayload })
-          } else if (m.type === 'delete') {
-            await utils.client.tasks.delete.mutate({ taskId: m.taskId })
-          } else if (m.type === 'clearDone') {
-            await utils.client.tasks.clearDone.mutate({ listId: m.listId, taskIds: m.taskIds })
+      await drainQueue({
+        next: () => offlineQueue.getAll(userId)[0],
+        canContinue: () => navigator.onLine && session.getUserId() === userId,
+        send: mutation => sendQueuedMutation(utils.client.tasks, mutation),
+        acknowledge: mutation => {
+          if (session.getUserId() === userId) {
+            utils.tasks.list.setData({ listId: mutation.listId }, rows => applyQueuedChanges(rows ?? [], mutation.listId, [mutation]))
           }
-          offlineQueue.remove(m.id)
-          affectedListIds.add(m.listId)
-        } catch {
-          // If we're still online it's likely a conflict (e.g. task deleted elsewhere) — skip it
-          if (navigator.onLine) {
-            offlineQueue.remove(m.id)
-            affectedListIds.add(m.listId)
-          } else {
-            break
-          }
-        }
-      }
+          offlineQueue.remove(mutation.id, userId)
+          affected.add(mutation.listId)
+        },
+      })
+    } catch (err: any) {
+      setError(err?.data?.code === 'UNAUTHORIZED'
+        ? 'Unlock your account again to sync. Your changes are saved on this device.'
+        : 'Changes are saved on this device. Sync failed; retry when the connection or access is restored.')
     } finally {
       syncing.current = false
-      setPendingCount(offlineQueue.count())
+      if (session.getUserId() === userId) {
+        affected.forEach(listId => { utils.tasks.list.invalidate({ listId }) })
+      }
     }
+  }, [isLoggedIn, utils])
 
-    for (const listId of affectedListIds) {
-      utils.tasks.list.invalidate({ listId })
-    }
-  }
-
-  // Sync on reconnect
   useEffect(() => {
-    const handleOnline = () => sync()
-    window.addEventListener('online', handleOnline)
-    return () => window.removeEventListener('online', handleOnline)
-  }, [])
+    sync()
+    const retry = () => { sync() }
+    window.addEventListener('online', retry)
+    const interval = window.setInterval(retry, 30_000)
+    return () => { window.removeEventListener('online', retry); window.clearInterval(interval) }
+  }, [sync])
+  useEffect(() => { if (pendingCount > 0) sync() }, [revision, isLoggedIn, sync])
 
-  // Sync on mount if there's a queue and we're online
-  useEffect(() => {
-    if (navigator.onLine && offlineQueue.count() > 0) sync()
-  }, [])
-
-  return { pendingCount, sync }
+  return { pendingCount, error, sync }
 }

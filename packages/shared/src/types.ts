@@ -1,6 +1,7 @@
 // packages/shared/src/types.ts
 
 export type TaskPayload = {
+  spawned_by?: string       // exact completed task that spawned this occurrence
   title: string
   notes: string | null
   bucket: 'now' | 'later'

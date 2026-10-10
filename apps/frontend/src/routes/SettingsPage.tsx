@@ -23,7 +23,7 @@ export function SettingsPage() {
           <div className="danger-zone">
             <div className="danger-zone-title">Danger zone</div>
             <p className="hint-text" style={{ marginBottom: 16 }}>
-              Logging out will clear your local keys. You will need your passphrase to log back in.
+              Your unlocked keys are kept in this tab only. Refreshing, closing the tab, or logging out locks your vault. Encrypted pending changes stay on this device until you unlock the same account and sync.
             </p>
             <button className="btn-danger" onClick={logout}>Log out</button>
           </div>

@@ -9,7 +9,7 @@
   "scripts": {
     "dev:backend": "bun --filter backend dev",
     "dev:frontend": "bun --filter frontend dev",
-    "test": "bun run --filter '@tasks/shared' test && bun run --filter backend test",
+    "test": "bun run --filter '@tasks/shared' test && bun run --filter backend test && bun run --filter frontend test",
     "typecheck": "bun run --filter '@tasks/shared' typecheck && bun run --filter backend typecheck && bun run --filter frontend typecheck",
     "build": "bun run --filter frontend build"
   },

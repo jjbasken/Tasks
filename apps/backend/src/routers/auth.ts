@@ -92,25 +92,35 @@ export const authRouter = router({
       const passwordHash = await Bun.password.hash(input.passwordHash, { algorithm: 'argon2id' })
       const userId = randomUUID()
       const now = Date.now()
-      // Bootstrap: first user always becomes admin
-      const [{ value: userCount }] = await ctx.db.select({ value: count() }).from(users)
-      const isBootstrap = userCount === 0
-      await ctx.db.insert(users).values({
-        id: userId,
-        username: input.username,
-        email: input.email,
-        passwordHash,
-        publicKey: input.publicKey,
-        kdfSalt: input.kdfSalt,
-        encryptedPrivateKey: input.encryptedPrivateKey,
-        encryptedPersonalListKey: input.encryptedPersonalListKey,
-        isAdmin: isBootstrap || (input.isAdmin ?? false),
-        createdAt: now,
-      })
-      // Create the user's personal list + membership so lists.list() works immediately after login
-      const listId = randomUUID()
-      await ctx.db.insert(lists).values({ id: listId, ownerId: userId, encryptedName: input.encryptedPersonalListName, isShared: false, isPersonal: true, createdAt: now })
-      await ctx.db.insert(listMemberships).values({ id: randomUUID(), listId, userId, encryptedListKey: input.encryptedPersonalListKey, invitedBy: null, createdAt: now })
+      ctx.db.transaction(tx => {
+        // Bootstrap: first user always becomes admin
+        const [{ value: userCount }] = tx.select({ value: count() }).from(users).all()
+        const isBootstrap = userCount === 0
+        // Hashing yields to other registrations. Recheck inside a synchronous
+        // write transaction so only one anonymous caller can claim bootstrap.
+        if (!isBootstrap) {
+          const admin = ctx.userId
+            ? tx.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, ctx.userId)).get()
+            : null
+          if (!admin?.isAdmin) throw new TRPCError({ code: ctx.userId ? 'FORBIDDEN' : 'UNAUTHORIZED' })
+        }
+        tx.insert(users).values({
+          id: userId,
+          username: input.username,
+          email: input.email,
+          passwordHash,
+          publicKey: input.publicKey,
+          kdfSalt: input.kdfSalt,
+          encryptedPrivateKey: input.encryptedPrivateKey,
+          encryptedPersonalListKey: input.encryptedPersonalListKey,
+          isAdmin: isBootstrap || (input.isAdmin ?? false),
+          createdAt: now,
+        }).run()
+        // Create the user's personal list + membership so lists.list() works immediately after login
+        const listId = randomUUID()
+        tx.insert(lists).values({ id: listId, ownerId: userId, encryptedName: input.encryptedPersonalListName, isShared: false, isPersonal: true, createdAt: now }).run()
+        tx.insert(listMemberships).values({ id: randomUUID(), listId, userId, encryptedListKey: input.encryptedPersonalListKey, invitedBy: null, createdAt: now }).run()
+      }, { behavior: 'immediate' })
       return { userId }
     }),
 

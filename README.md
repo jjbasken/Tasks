@@ -184,7 +184,7 @@ Each user has a **curve25519 keypair**. The private key is encrypted with a key 
 
 **Login:** the client fetches the KDF salt, re-derives the stretch key locally, and decrypts the private key. The passphrase is never transmitted.
 
-**Tasks:** all task content is encrypted with a per-list symmetric key (XChaCha20-Poly1305) before leaving the browser. The server stores `encrypted_payload` blobs only.
+**Tasks:** all task content is encrypted with a per-list symmetric key (XSalsa20-Poly1305) before leaving the browser. The server stores `encrypted_payload` blobs only.
 
 **Shared lists:** list names and task payloads are encrypted with the per-list key. Only a list's owner can invite, and the list key is encrypted to each invited member's public key. Before any key material is sealed, the recipient's public key is checked against a trust-on-first-use pin and its fingerprint is shown for out-of-band comparison, so a substituted key is a visible error rather than a silent one. Owners automatically migrate legacy list names from stretch-key encryption after their first upgraded login.
 
@@ -207,3 +207,9 @@ Removing a member deletes their membership row, which revokes their access to th
 - The frontend is served under a strict Content-Security-Policy — no inline scripts, and `script-src` allows only same-origin scripts plus `'wasm-unsafe-eval'` for libsodium's WebAssembly (JavaScript `eval()` stays blocked) — alongside HSTS, `X-Frame-Options`, `nosniff` and `Referrer-Policy`
 - Pending device approval requests are capped at 5 active requests per user, expire after 10 minutes, are source-rate-limited, and require a 6-digit code derived from the new device's own public key
 - Session tokens expire after 12 hours, live only in browser memory, and are individually revocable: logout revokes exactly that session, and an admin can invalidate every session for a user at once
+
+### Offline changes
+
+Task changes are saved as encrypted operations in a browser-local queue scoped to the account. New tasks use stable client-generated IDs so edits and deletes remain valid during replay. Operations are replayed in order; failed requests retain the pending work and display a retry message. Logging out keeps encrypted pending changes for the same account’s next unlock. Queues cannot sync while the vault is locked. Clearing browser storage deletes unsynced changes.
+
+Recurring occurrences record which completed task spawned them. Undo only removes active occurrences with that exact parent; older occurrences without a parent reference are retained.
