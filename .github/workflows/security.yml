@@ -56,6 +56,21 @@ jobs:
           persist-credentials: false
       - name: Build deployment image
         run: docker build -f apps/${{ matrix.app }}/Dockerfile -t tasks-${{ matrix.app }}:scan .
+      - name: Smoke test backend runtime
+        if: matrix.app == 'backend'
+        run: |
+          docker run -d --name smoke -p 127.0.0.1:3001:3001 -e DATABASE_URL=:memory: -e CORS_ORIGIN=http://localhost:3000 -e JWT_SECRET="$(openssl rand -hex 32)" tasks-backend:scan
+          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3001/health
+      - name: Smoke test frontend runtime
+        if: matrix.app == 'frontend'
+        run: |
+          docker run -d --name smoke --add-host backend:127.0.0.1 -p 127.0.0.1:8080:8080 tasks-frontend:scan
+          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8080/ | grep -i '<!doctype html>'
+      - name: Clean up smoke test
+        if: always()
+        run: |
+          docker logs smoke || true
+          docker rm -f smoke || true
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: tasks-${{ matrix.app }}:scan
