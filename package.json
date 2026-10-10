@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "@types/bun": "^1.3.11"
+  },
+  "overrides": {
+    "source-map-js": "^1.2.2"
   }
 }

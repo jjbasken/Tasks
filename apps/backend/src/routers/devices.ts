@@ -101,17 +101,19 @@ export const devicesRouter = router({
   checkApproval: publicProcedure
     .input(z.object({ deviceId: z.string().max(MAX_ID), pendingToken: z.string().max(MAX_ID) }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.transaction(async (tx) => {
-        const [device] = await tx.select().from(devices)
-          .where(and(eq(devices.id, input.deviceId), eq(devices.pendingToken, input.pendingToken)))
+      const approval = ctx.db.transaction(tx => {
+        const device = tx.select().from(devices)
+          .where(and(eq(devices.id, input.deviceId), eq(devices.pendingToken, input.pendingToken))).get()
         if (!device || device.status !== 'approved' || !device.sealedUserPrivateKey) return null
-        const [user] = await tx.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, device.userId))
+        const user = tx.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, device.userId)).get()
         if (!user) return null
-        // Clear the pendingToken so it cannot be reused
-        await tx.update(devices).set({ pendingToken: null }).where(eq(devices.id, input.deviceId))
-        const token = await signToken(device.userId, user.tokenVersion, device.id)
-        return { token, sealedUserPrivateKey: device.sealedUserPrivateKey }
-      })
+        // Claim synchronously; no second poll can mint a session with this handle.
+        tx.update(devices).set({ pendingToken: null }).where(eq(devices.id, input.deviceId)).run()
+        return { userId: device.userId, tokenVersion: user.tokenVersion, sealedUserPrivateKey: device.sealedUserPrivateKey }
+      }, { behavior: 'immediate' })
+      if (!approval) return null
+      const token = await signToken(approval.userId, approval.tokenVersion, input.deviceId)
+      return { token, sealedUserPrivateKey: approval.sealedUserPrivateKey }
     }),
 
   list: protectedProcedure.query(async ({ ctx }) => {

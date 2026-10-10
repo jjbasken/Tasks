@@ -74,6 +74,7 @@ it('never persists unlocked credentials and clears them on lock', () => {
   const key = new Uint8Array(32).fill(42)
   session.setToken('bearer-token')
   session.setStretchKey(key)
+  const storedKey = session.getStretchKey()!
   session.setPrivateKey('private-key')
   session.setPublicKey('public-key')
   expect([...storage.keys()]).toHaveLength(0)
@@ -82,7 +83,7 @@ it('never persists unlocked credentials and clears them on lock', () => {
   expect(session.getToken()).toBeNull()
   expect(session.getStretchKey()).toBeNull()
   expect(session.getPrivateKey()).toBeNull()
-  expect(key.every(byte => byte === 0)).toBe(true)
+  expect(storedKey.every(byte => byte === 0)).toBe(true)
 })
 
 it('keeps the failed tail of a partially replayed queue', async () => {
