@@ -4,8 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "noEmit": true,
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "noEmit": true
+    "esModuleInterop": true
   }
 }

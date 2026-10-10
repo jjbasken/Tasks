@@ -23,13 +23,23 @@ export const tasksRouter = router({
     }),
 
   create: protectedProcedure
-    .input(z.object({ listId: z.string().max(MAX_ID), encryptedPayload: z.string().max(MAX_TASK_PAYLOAD) }))
+    .input(z.object({ taskId: z.string().uuid().optional(), listId: z.string().max(MAX_ID), encryptedPayload: z.string().max(MAX_TASK_PAYLOAD) }))
     .mutation(async ({ ctx, input }) => {
       await assertListAccess(ctx.db, input.listId, ctx.userId)
-      const id = randomUUID()
-      const now = Date.now()
-      await ctx.db.insert(tasks).values({ id, listId: input.listId, encryptedPayload: input.encryptedPayload, createdAt: now, updatedAt: now })
-      return { id }
+      const id = input.taskId ?? randomUUID()
+      return ctx.db.transaction(tx => {
+        // Retrying an offline creation after a lost response must not duplicate it
+        // or overwrite an already edited task. An id collision in another list
+        // never grants access to that task.
+        const [existing] = tx.select().from(tasks).where(eq(tasks.id, id)).all()
+        if (existing) {
+          if (existing.listId !== input.listId) throw new TRPCError({ code: 'CONFLICT' })
+          return { id }
+        }
+        const now = Date.now()
+        tx.insert(tasks).values({ id, listId: input.listId, encryptedPayload: input.encryptedPayload, createdAt: now, updatedAt: now }).run()
+        return { id }
+      }, { behavior: 'immediate' })
     }),
 
   update: protectedProcedure

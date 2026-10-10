@@ -1,17 +1,29 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
+import { session } from '../lib/session.js'
 import type { TaskPayload } from '@tasks/shared'
 import { nextOccurrence } from '@tasks/shared'
-import { resolveListKey } from '../lib/listKeys.js'
+import { unwrapListKey } from '../lib/listCrypto.js'
+import { spawnedOccurrences } from '../lib/recurrence.js'
 
 type Tab = 'now' | 'later' | 'done'
 
+function resolveListKey(encryptedListKey: string): string | null {
+  const stretchKey = session.getStretchKey()
+  const privateKey = session.getPrivateKey()
+  const publicKey = session.getPublicKey()
+  if (!stretchKey || !privateKey || !publicKey) return null
+  try { return unwrapListKey(encryptedListKey, { stretchKey, privateKey, publicKey }) } catch { return null }
+}
+
 export function TasksPage() {
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [editorListId, setEditorListId] = useState('')
   const [tab, setTab] = useState<Tab>('now')
   const [selectedTask, setSelectedTask] = useState<DecryptedTask | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -65,18 +77,18 @@ export function TasksPage() {
           const in7Days = new Date()
           in7Days.setDate(in7Days.getDate() + 7)
           const bucket = next > in7Days ? 'later' : 'now'
-          const nextPayload: TaskPayload = { title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
+          const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
           await createTask.mutateAsync(nextPayload, listKeyB64)
         }
       } else if (!isDone && task.rrule) {
         // Undoing a completed recurring task — delete the next occurrence that was spawned
-        const orphanIds = tasks
-          .filter(t => t.id !== task.id && t.status === 'active' && t.rrule === task.rrule && !!t.due_date && !!task.due_date && t.due_date > task.due_date)
-          .map(t => t.id)
+        const orphanIds = spawnedOccurrences(tasks, task.id)
         if (orphanIds.length > 0) {
           await clearDone.mutateAsync({ listId: currentListId, taskIds: orphanIds })
         }
       }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update task')
     } finally {
       setCompletingIds(prev => { const s = new Set(prev); s.delete(task.id); return s })
     }
@@ -118,7 +130,7 @@ export function TasksPage() {
             </button>
           ))}
           {tab !== 'done' && (
-            <button className="add-task-btn" onClick={() => setShowCreate(true)}>
+            <button className="add-task-btn" onClick={() => { setSelectedTask(null); setEditorListId(currentListId); setShowCreate(true) }}>
               + Add task
             </button>
           )}
@@ -143,12 +155,14 @@ export function TasksPage() {
             </>
           )}
         </div>
+        {actionError && <div className="form-error" role="alert">{actionError}</div>}
         <div className="task-list-area">
-          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
+          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={task => { setEditorListId(currentListId); setSelectedTask(task); setShowCreate(false) }} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
         </div>
       </div>
-      {(selectedTask || showCreate) && (
+      {editorListId === currentListId && (selectedTask || showCreate) && (
         <TaskDetail
+          key={`${currentListId}:${selectedTask?.id ?? 'new'}`}
           task={selectedTask ?? null}
           listId={currentListId}
           listKeyB64={listKeyB64 ?? ''}

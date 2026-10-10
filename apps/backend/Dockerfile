@@ -1,12 +1,13 @@
-FROM oven/bun:1.3.11@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS base
+FROM oven/bun:1.4.2-alpine@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f AS base
 WORKDIR /app
+RUN apk upgrade --no-cache libcrypto3 libssl3
 
 # Install dependencies
 COPY package.json bun.lock ./
 COPY apps/backend/package.json ./apps/backend/
 COPY apps/frontend/package.json ./apps/frontend/
 COPY packages/shared/package.json ./packages/shared/
-RUN bun install --frozen-lockfile
+RUN bun install --production --frozen-lockfile --filter backend
 
 # Copy source
 COPY apps/backend/ ./apps/backend/

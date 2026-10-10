@@ -1,10 +1,8 @@
-import { useEffect } from 'react'
 import { trpc } from '../lib/trpc.js'
-import { decryptSymmetric, encryptSymmetric, fromBase64 } from '@tasks/shared'
+import { useEffect } from 'react'
+import { unwrapListKey, readListName, encryptListName } from '../lib/listCrypto.js'
+import { useAuth } from './useAuth.js'
 import { session } from '../lib/session.js'
-import { resolveListKey } from '../lib/listKeys.js'
-
-const migratingNames = new Set<string>()
 
 export type DecryptedList = {
   id: string
@@ -13,56 +11,44 @@ export type DecryptedList = {
   isPersonal: boolean
   isOwner: boolean
   encryptedListKey: string
-  listKeyB64: string
-  needsNameMigration: boolean
+  needsNameMigration?: boolean
 }
 
 export function useListsList() {
+  const { isLoggedIn } = useAuth()
   const utils = trpc.useUtils()
-  const migrateName = trpc.lists.updateEncryptedName.useMutation({
-    onSuccess: () => utils.lists.list.invalidate(),
-  })
   const query = trpc.lists.list.useQuery(undefined, {
+    enabled: isLoggedIn,
     select: (rows): DecryptedList[] => {
       const stretchKey = session.getStretchKey()
-      return rows.flatMap(row => {
-        const listKeyB64 = resolveListKey(row.encryptedListKey)
-        if (!listKeyB64) return []
+      const privateKey = session.getPrivateKey()
+      const publicKey = session.getPublicKey()
+      if (!stretchKey || !privateKey || !publicKey) return []
+      const keys = { stretchKey, privateKey, publicKey }
+      return rows.map(row => {
         try {
-          const parsed = JSON.parse(row.encryptedName)
-          let name: string
-          let needsNameMigration = false
-          if (typeof parsed === 'string') {
-            name = parsed
-            needsNameMigration = true
-          } else {
-            try {
-              name = decryptSymmetric(parsed, fromBase64(listKeyB64))
-            } catch {
-              if (!stretchKey) return []
-              name = decryptSymmetric(parsed, stretchKey)
-              needsNameMigration = true
-            }
-          }
-          return [{ id: row.id, name, isShared: row.isShared, isPersonal: row.isPersonal, isOwner: row.isOwner, encryptedListKey: row.encryptedListKey, listKeyB64, needsNameMigration }]
+          const listKey = unwrapListKey(row.encryptedListKey, keys)
+          const { name, needsMigration } = readListName(row.encryptedName, listKey, keys, row.isOwner)
+          return { ...row, name, needsNameMigration: needsMigration }
         } catch {
-          return []
+          return { ...row, name: 'Unable to decrypt list' }
         }
       })
     },
   })
-
   useEffect(() => {
-    for (const list of query.data ?? []) {
-      if (!list.isOwner || !list.needsNameMigration || migratingNames.has(list.id)) continue
-      migratingNames.add(list.id)
-      const encryptedName = JSON.stringify(encryptSymmetric(list.name, fromBase64(list.listKeyB64)))
-      migrateName.mutate({ listId: list.id, encryptedName }, {
-        onError: () => migratingNames.delete(list.id),
-      })
-    }
-  }, [query.data])
-
+    if (!navigator.onLine) return
+    const stretchKey = session.getStretchKey()
+    const privateKey = session.getPrivateKey()
+    const publicKey = session.getPublicKey()
+    if (!stretchKey || !privateKey || !publicKey) return
+    const keys = { stretchKey, privateKey, publicKey }
+    const migrations = query.data?.filter(row => row.isOwner && row.needsNameMigration)
+    if (!migrations?.length) return
+    Promise.all(migrations.map(row => utils.client.lists.rename.mutate({ listId: row.id, encryptedName: encryptListName(row.name, unwrapListKey(row.encryptedListKey, keys)) })))
+      .then(() => utils.lists.list.invalidate())
+      .catch(() => { /* Retry migration on the next successful list fetch. */ })
+  }, [query.data, utils])
   return query
 }
 

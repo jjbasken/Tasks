@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
+import { queryClient } from '../lib/queryClient.js'
 import { session } from '../lib/session.js'
 import { trpc } from '../lib/trpc.js'
 import {
-  initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair, fromBase64,
+  initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair,
   generateListKey, encryptSymmetric, decryptSymmetric,
-  type EncryptedBlob,
+  fromBase64, type EncryptedBlob,
 } from '@tasks/shared'
 
 type AuthContextType = {
@@ -12,9 +13,11 @@ type AuthContextType = {
   isAdmin: boolean
   login: (username: string, passphrase: string) => Promise<void>
   register: (username: string, email: string, passphrase: string, isAdmin?: boolean) => Promise<void>
+  unlockDevice: (token: string, bundle: DeviceKeyBundle) => Promise<void>
   logout: () => Promise<void>
-  activateSession: (isAdmin: boolean) => void
 }
+
+export type DeviceKeyBundle = { privateKey: string; publicKey: string; stretchKey: string }
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
@@ -29,17 +32,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stretchKey = await deriveStretchKey(passphrase, challenge.kdfSalt)
     const serverPassword = deriveServerPassword(stretchKey)
     const result = await utils.client.auth.login.mutate({ username, passwordHash: serverPassword })
-    session.setToken(result.token)
     const encPrivKey: EncryptedBlob = JSON.parse(result.encryptedPrivateKey)
     const privateKeyB64 = decryptSymmetric(encPrivKey, stretchKey)
-    const userInfo = await utils.users.search.fetch({ username })
+    session.setToken(result.token)
+    try {
+      queryClient.clear()
+      const userInfo = await utils.client.users.search.query({ username })
+      if (!userInfo) throw new Error('Account not found')
+      await finishUnlock(stretchKey, privateKeyB64, userInfo.publicKey)
+    } catch (error) {
+      session.clear()
+      throw error
+    }
+  }
+
+  async function finishUnlock(stretchKey: Uint8Array, privateKey: string, publicKey: string) {
+    const me = await utils.client.users.me.query()
+    if (!me.id) throw new Error('Account not found')
     session.setStretchKey(stretchKey)
-    session.setPrivateKey(privateKeyB64)
-    if (userInfo) session.setPublicKey(userInfo.publicKey)
-    const me = await utils.users.me.fetch()
+    session.setPrivateKey(privateKey)
+    session.setPublicKey(publicKey)
+    session.setUserId(me.id)
     session.setIsAdmin(me.isAdmin)
     setIsAdmin(me.isAdmin)
     setIsLoggedIn(true)
+  }
+
+  async function unlockDevice(token: string, bundle: DeviceKeyBundle) {
+    await initCrypto()
+    session.setToken(token)
+    try {
+      queryClient.clear()
+      await finishUnlock(fromBase64(bundle.stretchKey), bundle.privateKey, bundle.publicKey)
+    } catch (error) {
+      session.clear()
+      throw error
+    }
   }
 
   async function register(username: string, email: string, passphrase: string, isAdmin = false) {
@@ -66,25 +94,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     // Revoke the token server-side first. Clearing localStorage alone leaves a
-    // year-long token valid for anyone who captured it.
+    // captured token valid for anyone who captured it.
     try {
       await utils.client.auth.logout.mutate()
     } catch {
       // Offline or already-invalid token — clear locally regardless.
     }
     session.clear()
+    queryClient.clear()
     setIsLoggedIn(false)
     setIsAdmin(false)
   }
 
-  function activateSession(admin: boolean) {
-    session.setIsAdmin(admin)
-    setIsAdmin(admin)
-    setIsLoggedIn(true)
-  }
-
   return (
-    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, register, logout, activateSession }}>
+    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, register, unlockDevice, logout }}>
       {children}
     </AuthContext.Provider>
   )

@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { eq, and, gt, lt, count } from 'drizzle-orm'
+import { eq, and, gt, lte, count } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID, timingSafeEqual } from 'crypto'
 import { deviceVerificationCode } from '@tasks/shared'
@@ -48,7 +48,7 @@ export const devicesRouter = router({
         tx.delete(devices).where(and(
           eq(devices.userId, user.id),
           eq(devices.status, 'pending'),
-          lt(devices.createdAt, cutoff),
+          lte(devices.createdAt, cutoff),
         )).run()
         const [{ value: pendingCount }] = tx
           .select({ value: count() })
@@ -57,7 +57,7 @@ export const devicesRouter = router({
           .all()
         if (pendingCount >= 5) return
         tx.insert(devices).values({ id, userId: user.id, publicKey: input.devicePublicKey, name: input.name, status: 'pending', pendingToken, createdAt: Date.now() }).run()
-      })
+      }, { behavior: 'immediate' })
       // A full account gets the same response as a real request (and as an unknown
       // username); no row was inserted for it, so the handle never resolves.
       return { deviceId: id, pendingToken }
@@ -101,17 +101,19 @@ export const devicesRouter = router({
   checkApproval: publicProcedure
     .input(z.object({ deviceId: z.string().max(MAX_ID), pendingToken: z.string().max(MAX_ID) }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.transaction(async (tx) => {
-        const [device] = await tx.select().from(devices)
-          .where(and(eq(devices.id, input.deviceId), eq(devices.pendingToken, input.pendingToken)))
+      const approval = ctx.db.transaction(tx => {
+        const device = tx.select().from(devices)
+          .where(and(eq(devices.id, input.deviceId), eq(devices.pendingToken, input.pendingToken))).get()
         if (!device || device.status !== 'approved' || !device.sealedUserPrivateKey) return null
-        const [user] = await tx.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, device.userId))
+        const user = tx.select({ tokenVersion: users.tokenVersion }).from(users).where(eq(users.id, device.userId)).get()
         if (!user) return null
-        // Clear the pendingToken so it cannot be reused
-        await tx.update(devices).set({ pendingToken: null }).where(eq(devices.id, input.deviceId))
-        const token = await signToken(device.userId, user.tokenVersion, device.id)
-        return { token, sealedUserPrivateKey: device.sealedUserPrivateKey }
-      })
+        // Claim synchronously; no second poll can mint a session with this handle.
+        tx.update(devices).set({ pendingToken: null }).where(eq(devices.id, input.deviceId)).run()
+        return { userId: device.userId, tokenVersion: user.tokenVersion, sealedUserPrivateKey: device.sealedUserPrivateKey }
+      }, { behavior: 'immediate' })
+      if (!approval) return null
+      const token = await signToken(approval.userId, approval.tokenVersion, input.deviceId)
+      return { token, sealedUserPrivateKey: approval.sealedUserPrivateKey }
     }),
 
   list: protectedProcedure.query(async ({ ctx }) => {

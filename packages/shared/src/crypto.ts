@@ -90,7 +90,7 @@ export function generateListKey(): string {
   return toBase64(sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES))
 }
 
-/** Encrypt a UTF-8 string with XChaCha20-Poly1305 (libsodium SecretBox). */
+/** Encrypt a UTF-8 string with XSalsa20-Poly1305 (libsodium SecretBox). */
 export function encryptSymmetric(plaintext: string, key: Uint8Array): EncryptedBlob {
   const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES)
   const ciphertext = sodium.crypto_secretbox_easy(sodium.from_string(plaintext), nonce, key)
