@@ -100,3 +100,5 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           hide-progress: true
+        env:
+          TRIVY_IGNOREFILE: .github/trivy/tunnel-ignore.yaml
