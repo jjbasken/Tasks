@@ -7,6 +7,7 @@ function worker(options: { failInstall?: boolean } = {}) {
   const deleted: string[] = []
   const network: string[] = []
   const requests: string[] = []
+  const skipped: boolean[] = []
   const cache = {
     addAll: async (items: Request[]) => {
       requests.push(...items.map(item => item.url))
@@ -15,12 +16,12 @@ function worker(options: { failInstall?: boolean } = {}) {
     match: async (path: string) => path === '/index.html' ? new Response('cached app') : undefined,
   }
   runInNewContext(readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8'), {
-    self: { location: { origin: 'https://tasks.test' }, clients: { claim: async () => {} }, addEventListener: (name: string, fn: any) => { handlers[name] = fn } },
+    self: { location: { origin: 'https://tasks.test' }, clients: { claim: async () => {} }, skipWaiting: () => { skipped.push(true) }, addEventListener: (name: string, fn: any) => { handlers[name] = fn } },
     caches: { open: async () => cache, keys: async () => ['tasks-v1', 'tasks-shell-old', 'other-app'], delete: async (key: string) => { deleted.push(key) } },
     URL, Request: class extends Request { constructor(url: string, init: RequestInit) { super(new URL(url, 'https://tasks.test'), init) } },
     fetch: async (request: Request) => { network.push(request.url); throw new Error('offline') },
   })
-  return { handlers, deleted, network, requests }
+  return { handlers, deleted, network, requests, skipped }
 }
 
 it('waits for the complete offline shell and rejects an interrupted install', async () => {
@@ -51,4 +52,13 @@ it('leaves API, external, and write requests alone and cleans only its own cache
   instance.handlers.activate({ waitUntil: (promise: Promise<void>) => { lifetime = promise } })
   await lifetime
   expect(instance.deleted.sort()).toEqual(['tasks-shell-old', 'tasks-v1'])
+})
+
+it('activates a waiting update only when the page asks for it', () => {
+  const instance = worker()
+  instance.handlers.message({ data: { type: 'other' } })
+  instance.handlers.message({ data: null })
+  expect(instance.skipped).toEqual([])
+  instance.handlers.message({ data: { type: 'SKIP_WAITING' } })
+  expect(instance.skipped).toEqual([true])
 })

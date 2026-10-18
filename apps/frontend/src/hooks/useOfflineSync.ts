@@ -12,7 +12,7 @@ import { useAuth } from './useAuth.js'
 let syncing: Promise<void> | null = null
 
 export function useOfflineSync() {
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, unlockCount } = useAuth()
   const utils = trpc.useUtils()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
@@ -79,7 +79,8 @@ export function useOfflineSync() {
     const interval = window.setInterval(retry, 30_000)
     return () => { window.removeEventListener('online', retry); window.removeEventListener('pageshow', retry); document.removeEventListener('visibilitychange', resume); window.clearInterval(interval) }
   }, [sync])
-  useEffect(() => { if (pendingCount > 0) sync() }, [revision, isLoggedIn, sync])
+  // Signing in online after an offline unlock leaves isLoggedIn unchanged; sync now, not at the next retry.
+  useEffect(() => { if (pendingCount > 0) sync() }, [revision, isLoggedIn, unlockCount, sync])
 
   return { pendingCount, error, sync }
 }

@@ -4,11 +4,15 @@ const PRECACHE = /* __PRECACHE__ */ ['/index.html', '/manifest.json', '/icon.svg
 
 self.addEventListener('install', event => {
   // Installation is atomic: a failed download leaves the previous worker active.
-  // Wait for existing windows to close before activating an update, so an open
-  // editor keeps the matching HTML, scripts and styles for its current version.
+  // An update waits until existing windows close or the user accepts it, so an
+  // open editor keeps the matching HTML, scripts and styles for its version.
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(
     PRECACHE.map(url => new Request(url, { cache: 'reload' }))
   )))
+})
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', event => {
