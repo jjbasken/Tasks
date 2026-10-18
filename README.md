@@ -57,6 +57,8 @@ CORS_ORIGIN=https://your-domain.com   # defaults to http://localhost:3000
 DB_DATA_PATH=./data                   # host path for the SQLite volume (absolute if a manager like Dockhand deploys)
 MAX_FILE_BYTES=52428800               # largest note attachment, default 50 MiB
 FILES_QUOTA_BYTES=2147483648          # attachment storage per user, default 2 GiB
+TASKS_TAG=latest                      # image tag to run, e.g. sha-bdfb6190c1a2 to pin a version
+TASKS_IMAGE_PREFIX=ghcr.io/jjbasken   # registry namespace for the images (forks: your own)
 ```
 
 Generate a strong `JWT_SECRET`:
@@ -72,8 +74,19 @@ deliberately ships this value empty rather than with a working default.
 
 ### Running with Docker Compose
 
+CI publishes the frontend and backend images to GitHub Container Registry for every merge to `main`, after they pass the smoke tests and vulnerability scans. Pull and start them:
+
 ```sh
+docker compose pull
 docker compose up -d
+```
+
+To update, run the same two commands again. Only `docker-compose.yml` and `.env` are needed on the server; pull the repository again only when the compose file changes. To roll back, set `TASKS_TAG` to an earlier `sha-…` tag and run them again.
+
+To build from source instead, for example on a fork or with local changes:
+
+```sh
+docker compose up -d --build
 ```
 
 The backend runs as UID 1000. When using the default bind-mounted data

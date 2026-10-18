@@ -1,5 +1,7 @@
 services:
   frontend:
+    # Prebuilt by CI from main. `docker compose up --build` builds from source instead.
+    image: ${TASKS_IMAGE_PREFIX:-ghcr.io/jjbasken}/tasks-frontend:${TASKS_TAG:-latest}
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
@@ -23,6 +25,7 @@ services:
       - ALL
 
   backend:
+    image: ${TASKS_IMAGE_PREFIX:-ghcr.io/jjbasken}/tasks-backend:${TASKS_TAG:-latest}
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
