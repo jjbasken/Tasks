@@ -7,7 +7,8 @@ COPY package.json bun.lock ./
 COPY apps/backend/package.json ./apps/backend/
 COPY apps/frontend/package.json ./apps/frontend/
 COPY packages/shared/package.json ./packages/shared/
-RUN bun install --production --frozen-lockfile --filter backend
+# Omit peers: @trpc/server peer-depends on typescript, which is build-time only.
+RUN bun install --production --omit=peer --frozen-lockfile --filter backend
 
 # Copy source
 COPY apps/backend/ ./apps/backend/
