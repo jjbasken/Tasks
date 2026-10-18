@@ -230,3 +230,16 @@ describe('StandardNotes import', async () => {
     expect(restored.tags.find(t => t.title === 'projects')?.parentSourceId).toBe('33333333-3333-4333-8333-333333333333')
   })
 })
+
+describe('Super table conversion', async () => {
+  const { lexicalToMarkdown } = await import('../src/lib/notesImport.js')
+  const cell = (text: string) => ({ type: 'tablecell', children: [{ type: 'paragraph', children: [{ type: 'text', text, format: 0 }] }] })
+  it('escapes pipes and backslashes and keeps cells on one line', () => {
+    const md = lexicalToMarkdown({ root: { type: 'root', children: [{ type: 'table', children: [
+      { type: 'tablerow', children: [cell('path'), cell('note')] },
+      { type: 'tablerow', children: [cell('C:\\dir\\'), cell('a|b')] },
+      { type: 'tablerow', children: [{ type: 'tablecell', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'x', format: 0 }, { type: 'linebreak' }, { type: 'text', text: 'y', format: 0 }] }] }, cell('z')] },
+    ] }] } })
+    expect(md).toBe('| path | note |\n| --- | --- |\n| C:\\\\dir\\\\ | a\\|b |\n| x y | z |')
+  })
+})

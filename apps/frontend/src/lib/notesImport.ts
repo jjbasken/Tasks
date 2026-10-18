@@ -209,6 +209,15 @@ function list(node: LexicalNode, depth: number): string[] {
   return lines
 }
 
+/**
+ * A Markdown table cell must stay on one line, and its pipes must not end the
+ * cell. Escape backslashes too, or a cell ending in `\` would turn the
+ * following escaped pipe back into a column separator.
+ */
+function tableCell(text: string) {
+  return text.replace(/\s*\n\s*/g, ' ').replace(/[\\|]/g, '\\$&').trim()
+}
+
 function block(node: LexicalNode): string {
   switch (node.type) {
     case 'paragraph': return inline(node.children)
@@ -218,7 +227,7 @@ function block(node: LexicalNode): string {
     case 'code': return `\`\`\`${node.language ?? ''}\n${inline(node.children).replace(/ {2}\n/g, '\n')}\n\`\`\``
     case 'horizontalrule': return '---'
     case 'table': {
-      const rows = (node.children ?? []).map(row => (row.children ?? []).map(cell => (cell.children ?? []).map(block).join(' ').replace(/\|/g, '\\|')))
+      const rows = (node.children ?? []).map(row => (row.children ?? []).map(cell => (cell.children ?? []).map(block).join(' '))).map(row => row.map(tableCell))
       if (rows.length === 0) return ''
       const width = Math.max(...rows.map(r => r.length))
       const line = (cells: string[]) => `| ${Array.from({ length: width }, (_, i) => cells[i] ?? '').join(' | ')} |`
