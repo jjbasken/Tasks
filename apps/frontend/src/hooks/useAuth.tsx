@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { queryClient } from '../lib/queryClient.js'
 import { session } from '../lib/session.js'
+import { rememberOfflineAccount, unlockOfflineAccount, restoreOfflineData, watchOfflineData, flushOfflineData, forgetOfflineDevice, offlineStorageStatus } from '../lib/offlineVault.js'
 import { trpc } from '../lib/trpc.js'
 import {
   initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair,
@@ -11,10 +12,13 @@ import {
 type AuthContextType = {
   isLoggedIn: boolean
   isAdmin: boolean
+  /** Changes on every unlock, including an online sign-in after an offline unlock. */
+  unlockCount: number
   login: (username: string, passphrase: string) => Promise<void>
   register: (username: string, email: string, passphrase: string, isAdmin?: boolean) => Promise<void>
   unlockDevice: (token: string, bundle: DeviceKeyBundle) => Promise<void>
   logout: () => Promise<void>
+  forgetDevice: () => Promise<void>
 }
 
 export type DeviceKeyBundle = { privateKey: string; publicKey: string; stretchKey: string }
@@ -24,11 +28,37 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!session.getToken())
   const [isAdmin, setIsAdmin] = useState(() => session.getIsAdmin())
+  const [unlockCount, setUnlockCount] = useState(0)
   const utils = trpc.useUtils()
+
+  useEffect(() => watchOfflineData(queryClient), [])
+
+  async function unlockOffline(username: string, passphrase: string) {
+    const saved = await unlockOfflineAccount(username, passphrase)
+    queryClient.clear()
+    session.clear()
+    session.setStretchKey(saved.key)
+    saved.key.fill(0)
+    session.setPrivateKey(saved.privateKey)
+    session.setPublicKey(saved.publicKey)
+    session.setUserId(saved.userId)
+    try { await restoreOfflineData(queryClient) } catch (error) { offlineStorageStatus.report(error) }
+    setIsAdmin(false)
+    setIsLoggedIn(true)
+    setUnlockCount(n => n + 1)
+  }
 
   async function login(username: string, passphrase: string) {
     await initCrypto()
-    const challenge = await utils.auth.getLoginChallenge.fetch({ username })
+    if (!navigator.onLine) return unlockOffline(username, passphrase)
+    let challenge
+    try {
+      challenge = await utils.client.auth.getLoginChallenge.query({ username })
+    } catch (error: any) {
+      // Do not bypass an explicit authentication/rate-limit response.
+      if (!error?.data && error?.cause) return unlockOffline(username, passphrase)
+      throw error
+    }
     const stretchKey = await deriveStretchKey(passphrase, challenge.kdfSalt)
     const serverPassword = deriveServerPassword(stretchKey)
     const result = await utils.client.auth.login.mutate({ username, passwordHash: serverPassword })
@@ -40,6 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userInfo = await utils.client.users.search.query({ username })
       if (!userInfo) throw new Error('Account not found')
       await finishUnlock(stretchKey, privateKeyB64, userInfo.publicKey)
+      try {
+        rememberOfflineAccount(username, challenge.kdfSalt, stretchKey, {
+          userId: session.getUserId()!, privateKey: privateKeyB64, publicKey: userInfo.publicKey,
+        })
+        offlineStorageStatus.report(null, 'account')
+      } catch (error) { offlineStorageStatus.report(error, 'account') }
     } catch (error) {
       session.clear()
       throw error
@@ -54,8 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session.setPublicKey(publicKey)
     session.setUserId(me.id)
     session.setIsAdmin(me.isAdmin)
+    try { await restoreOfflineData(queryClient) } catch (error) { offlineStorageStatus.report(error) }
+    if (navigator.storage?.persist) void navigator.storage.persist().catch(() => {})
     setIsAdmin(me.isAdmin)
     setIsLoggedIn(true)
+    setUnlockCount(n => n + 1)
   }
 
   async function unlockDevice(token: string, bundle: DeviceKeyBundle) {
@@ -100,14 +139,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Offline or already-invalid token — clear locally regardless.
     }
+    await flushOfflineData(queryClient)
     session.clear()
     queryClient.clear()
     setIsLoggedIn(false)
     setIsAdmin(false)
   }
 
+  async function forgetDevice() {
+    await forgetOfflineDevice()
+    await logout()
+  }
+
   return (
-    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, register, unlockDevice, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn, isAdmin, unlockCount, login, register, unlockDevice, logout, forgetDevice }}>
       {children}
     </AuthContext.Provider>
   )

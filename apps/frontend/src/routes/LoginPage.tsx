@@ -35,7 +35,7 @@ export function LoginPage() {
         </div>
         <h1 className="auth-heading">Welcome back</h1>
         <p className="auth-sub">Unlock your encrypted vault</p>
-        <p className="hint-text">Your vault locks when this tab is refreshed or closed.</p>
+        <p className="hint-text">Your vault locks when this app closes. After signing in once, you can unlock saved data offline with your passphrase.</p>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
             <label className="form-label">Username</label>

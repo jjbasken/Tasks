@@ -82,6 +82,11 @@ export const offlineQueue = {
     if (userId) save(load(userId).filter(m => m.id !== id), userId)
   },
   count: () => load().length,
+  /** Delete unsynced changes for good, when the user removes this device's offline data. */
+  discard(userId: string) {
+    localStorage.removeItem(storageKey(userId))
+    changed()
+  },
 }
 
 export type TaskRow = { id: string; listId: string; encryptedPayload: string; createdAt: number; updatedAt: number }

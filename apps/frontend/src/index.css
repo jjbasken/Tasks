@@ -41,25 +41,55 @@ body {
 }
 
 /* ─── OFFLINE BANNER ─────────────────────────────────── */
-.offline-banner {
+.app-notices {
   position: fixed;
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+
+.offline-banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 8px;
   padding: 8px 16px;
   background: var(--bg-elevated);
   border: 1px solid rgba(248,113,113,0.3);
-  border-radius: 999px;
+  border-radius: 18px;
   font-size: 12px;
   font-weight: 500;
   color: var(--danger);
   box-shadow: var(--shadow-md);
-  white-space: nowrap;
+  text-align: center;
   animation: offline-fade-in 0.2s ease;
+}
+
+/* Actions take the banner's own colour: the browser's default link blue is unreadable on it. */
+.offline-banner a,
+.offline-banner button {
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.offline-banner--update {
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 
 .offline-banner--syncing {
@@ -81,8 +111,8 @@ body {
 }
 
 @keyframes offline-fade-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes offline-pulse {

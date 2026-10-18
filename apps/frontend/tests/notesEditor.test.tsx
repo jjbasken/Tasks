@@ -36,4 +36,29 @@ describe('editor save lifecycle', () => {
       dom.window.close()
     }
   })
+
+  it('flushes the final edit when a phone backgrounds the app before autosave', async () => {
+    const dom = new JSDOM('<div id="root"></div>')
+    Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, requestAnimationFrame: () => 0 })
+    const { createRoot } = await import('react-dom/client')
+    const root = createRoot(document.getElementById('root')!)
+    const saved: NotePayload[] = []
+    const note = { ...newNotePayload(), id: 'n', listId: 'l', updatedAt: 1 }
+    try {
+      await act(async () => root.render(<NoteEditor note={note} tags={[]} listName="Personal" unlocked
+        onSave={(_, payload) => { saved.push(payload); return true }} onAction={() => {}}
+        onAddTag={() => null} onRequestUnlock={() => {}} />))
+      await act(async () => { (document.querySelector('[title="Bold (Ctrl+B)"]') as HTMLButtonElement).click() })
+      expect(saved).toHaveLength(0)
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+      await act(async () => { document.dispatchEvent(new dom.window.Event('visibilitychange')) })
+      expect(saved).toHaveLength(1)
+      expect(saved[0].text).toBe('**text**')
+      window.dispatchEvent(new dom.window.Event('pagehide'))
+      expect(saved).toHaveLength(1)
+    } finally {
+      await act(async () => root.unmount())
+      dom.window.close()
+    }
+  })
 })
