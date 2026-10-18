@@ -3,6 +3,8 @@ import { tasksRouter } from './routers/tasks.js'
 import { listsRouter } from './routers/lists.js'
 import { devicesRouter } from './routers/devices.js'
 import { usersRouter } from './routers/users.js'
+import { notesRouter, tagsRouter } from './routers/notes.js'
+import { filesRouter } from './routers/files.js'
 import { router } from './trpc.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './trpc.js'
@@ -13,6 +15,9 @@ export const appRouter = router({
   lists: listsRouter,
   devices: devicesRouter,
   users: usersRouter,
+  notes: notesRouter,
+  tags: tagsRouter,
+  files: filesRouter,
 })
 
 export type AppRouter = typeof appRouter

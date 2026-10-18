@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -44,6 +44,65 @@ export const tasks = sqliteTable('tasks', {
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
+
+export const notes = sqliteTable('notes', {
+  id: text('id').primaryKey(),
+  listId: text('list_id').notNull().references(() => lists.id),
+  encryptedPayload: text('encrypted_payload').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, table => ({
+  listUpdated: index('notes_list_updated_idx').on(table.listId, table.updatedAt),
+}))
+
+export const noteTags = sqliteTable('note_tags', {
+  id: text('id').primaryKey(),
+  listId: text('list_id').notNull().references(() => lists.id),
+  encryptedPayload: text('encrypted_payload').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, table => ({
+  listUpdated: index('note_tags_list_updated_idx').on(table.listId, table.updatedAt),
+}))
+
+// Prior versions of a note, snapshotted by the server on update. The server only
+// copies ciphertext; it never needs to read a revision.
+export const noteRevisions = sqliteTable('note_revisions', {
+  id: text('id').primaryKey(),
+  noteId: text('note_id').notNull().references(() => notes.id),
+  listId: text('list_id').notNull().references(() => lists.id),
+  encryptedPayload: text('encrypted_payload').notNull(),
+  createdAt: integer('created_at').notNull(),
+}, table => ({
+  noteCreated: index('note_revisions_note_created_idx').on(table.noteId, table.createdAt),
+}))
+
+// Permanent deletes of notes and tags, so incremental sync can tell clients what
+// disappeared since their cursor.
+export const syncTombstones = sqliteTable('sync_tombstones', {
+  id: text('id').primaryKey(),
+  listId: text('list_id').notNull().references(() => lists.id),
+  kind: text('kind', { enum: ['note', 'tag'] }).notNull(),
+  deletedAt: integer('deleted_at').notNull(),
+}, table => ({
+  listDeleted: index('sync_tombstones_list_deleted_idx').on(table.listId, table.deletedAt),
+}))
+
+// Encrypted attachment blobs live on disk; this row holds the access-control
+// facts and the list-key-encrypted metadata (name, type, per-file key).
+export const files = sqliteTable('files', {
+  id: text('id').primaryKey(),
+  listId: text('list_id').notNull().references(() => lists.id),
+  noteId: text('note_id').notNull(),
+  uploaderId: text('uploader_id').notNull().references(() => users.id),
+  size: integer('size').notNull(),
+  encryptedMetadata: text('encrypted_metadata').notNull(),
+  uploaded: integer('uploaded', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull(),
+}, table => ({
+  note: index('files_note_idx').on(table.noteId),
+  list: index('files_list_idx').on(table.listId),
+}))
 
 // Individual tokens invalidated by an explicit logout. Bumping users.tokenVersion
 // kills every session at once; this kills exactly the session that logged out.

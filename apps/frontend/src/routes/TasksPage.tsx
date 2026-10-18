@@ -5,21 +5,12 @@ import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
-import { session } from '../lib/session.js'
 import type { TaskPayload } from '@tasks/shared'
 import { nextOccurrence } from '@tasks/shared'
-import { unwrapListKey } from '../lib/listCrypto.js'
+import { resolveListKey } from '../lib/listKeys.js'
 import { spawnedOccurrences } from '../lib/recurrence.js'
 
 type Tab = 'now' | 'later' | 'done'
-
-function resolveListKey(encryptedListKey: string): string | null {
-  const stretchKey = session.getStretchKey()
-  const privateKey = session.getPrivateKey()
-  const publicKey = session.getPublicKey()
-  if (!stretchKey || !privateKey || !publicKey) return null
-  try { return unwrapListKey(encryptedListKey, { stretchKey, privateKey, publicKey }) } catch { return null }
-}
 
 export function TasksPage() {
   const [actionError, setActionError] = useState<string | null>(null)

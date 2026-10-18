@@ -3,7 +3,8 @@ import { eq, and } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { router, protectedProcedure } from '../router.js'
-import { lists, listMemberships, tasks, users } from '../db/schema.js'
+import { files, lists, listMemberships, noteRevisions, notes, noteTags, syncTombstones, tasks, users } from '../db/schema.js'
+import { removeStoredFiles } from '../lib/fileStore.js'
 import { MAX_ID, MAX_KEY_BLOB, MAX_NAME_BLOB, MAX_USERNAME } from '../lib/limits.js'
 
 /** SQLite surfaces a unique-index collision as a message, not a typed error. */
@@ -96,11 +97,20 @@ export const listsRouter = router({
       if (list.isPersonal) throw new TRPCError({ code: 'FORBIDDEN', message: 'The personal list cannot be deleted' })
       // Foreign keys are enforced, so children go first; one transaction keeps a
       // partial failure from leaving orphaned tasks or memberships behind.
-      ctx.db.transaction(tx => {
+      const fileIds = ctx.db.transaction(tx => {
+        const doomed = tx.select({ id: files.id }).from(files).where(eq(files.listId, input.listId)).all().map(f => f.id)
         tx.delete(tasks).where(eq(tasks.listId, input.listId)).run()
+        tx.delete(files).where(eq(files.listId, input.listId)).run()
+        tx.delete(noteRevisions).where(eq(noteRevisions.listId, input.listId)).run()
+        tx.delete(notes).where(eq(notes.listId, input.listId)).run()
+        tx.delete(noteTags).where(eq(noteTags.listId, input.listId)).run()
+        tx.delete(syncTombstones).where(eq(syncTombstones.listId, input.listId)).run()
         tx.delete(listMemberships).where(eq(listMemberships.listId, input.listId)).run()
         tx.delete(lists).where(eq(lists.id, input.listId)).run()
+        return doomed
       })
+      // Unlink only after the rows are gone, so a failed transaction loses nothing.
+      await removeStoredFiles(fileIds)
     }),
 
   leave: protectedProcedure

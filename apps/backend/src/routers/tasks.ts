@@ -3,16 +3,9 @@ import { eq, and, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { router, protectedProcedure } from '../router.js'
-import { tasks, listMemberships } from '../db/schema.js'
+import { tasks } from '../db/schema.js'
+import { assertListAccess } from '../lib/access.js'
 import { MAX_ID, MAX_TASK_IDS, MAX_TASK_PAYLOAD } from '../lib/limits.js'
-
-async function assertListAccess(db: any, listId: string, userId: string) {
-  const [membership] = await db
-    .select()
-    .from(listMemberships)
-    .where(and(eq(listMemberships.listId, listId), eq(listMemberships.userId, userId)))
-  if (!membership) throw new TRPCError({ code: 'FORBIDDEN' })
-}
 
 export const tasksRouter = router({
   list: protectedProcedure

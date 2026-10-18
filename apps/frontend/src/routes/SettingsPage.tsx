@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router'
 import { useAuth } from '../hooks/useAuth.js'
 import { Sidebar } from '../components/Sidebar.js'
+import { NotesBackup } from '../components/notes/NotesBackup.js'
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -19,6 +20,8 @@ export function SettingsPage() {
               <span className="card-row-meta">Active</span>
             </div>
           </div>
+
+          <NotesBackup />
 
           <div className="danger-zone">
             <div className="danger-zone-title">Danger zone</div>
