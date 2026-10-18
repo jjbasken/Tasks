@@ -27,6 +27,14 @@ export function Sidebar({ activeListId, onSelectList }: Props) {
           <span className="sidebar-brand-name">Tasks</span>
           <button className="sidebar-close-btn" aria-label="Close menu" onClick={() => setMobileOpen(false)}>✕</button>
         </div>
+        <div className="sidebar-modes">
+          <NavLink to="/tasks" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`} onClick={() => setMobileOpen(false)}>
+            <span className="sidebar-nav-icon">✓</span> Tasks
+          </NavLink>
+          <NavLink to="/notes" className={({ isActive }) => `sidebar-nav-link${isActive ? ' active' : ''}`} onClick={() => setMobileOpen(false)}>
+            <span className="sidebar-nav-icon">✎</span> Notes
+          </NavLink>
+        </div>
         <div className="sidebar-section-label">Lists</div>
         {lists?.map(list => (
           <button

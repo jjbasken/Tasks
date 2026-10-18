@@ -32,6 +32,8 @@ services:
       DATABASE_URL: /data/db.sqlite
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-}
+      FILES_QUOTA_BYTES: ${FILES_QUOTA_BYTES:-}
     volumes:
       - ${DB_DATA_PATH:-./data}:/data
     restart: unless-stopped

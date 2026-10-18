@@ -160,6 +160,14 @@ export const authRouter = router({
       }
     }),
 
+  // Lets an unlocked session re-verify the passphrase locally (protected notes)
+  // even when it was unlocked by device approval and never saw the salt.
+  kdfSalt: protectedProcedure.query(async ({ ctx }) => {
+    const [user] = await ctx.db.select({ kdfSalt: users.kdfSalt }).from(users).where(eq(users.id, ctx.userId))
+    if (!user) throw new TRPCError({ code: 'NOT_FOUND' })
+    return { kdfSalt: user.kdfSalt }
+  }),
+
   // Revokes the calling session's own token. Clearing localStorage alone leaves a
   // year-long token valid for anyone who captured it, so the token id goes on the
   // revocation list that createContext checks on every request.

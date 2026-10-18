@@ -1,3 +1,6 @@
+import { revokeAttachmentUrls } from './attachments.js'
+import { protection } from './protection.js'
+
 // An unlocked vault lives only in this tab's memory. Reloading or closing the
 // tab requires a passphrase login or another device approval.
 let token: string | null = null
@@ -54,6 +57,8 @@ export const session = {
   setUserId: (value: string) => { userId = value },
   getUserId: () => userId,
   clear: () => {
+    revokeAttachmentUrls()
+    protection.lock()
     stretchKey?.fill(0)
     token = privateKey = publicKey = userId = null
     stretchKey = null
