@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { closeSync, ftruncateSync, openSync, readFileSync, readdirSync, writeSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
 
@@ -9,7 +9,18 @@ import type { Plugin } from 'vite'
  */
 export function writeOfflineShell(outDir: string) {
   const workerPath = resolve(outDir, 'sw.js')
-  if (!existsSync(workerPath)) throw new Error(`offline-shell: ${workerPath} is missing`)
+  // Read and rewrite through one descriptor, so the worker cannot be swapped between the two.
+  let fd: number
+  try { fd = openSync(workerPath, 'r+') } catch (error: any) {
+    if (error?.code === 'ENOENT') throw new Error(`offline-shell: ${workerPath} is missing`)
+    throw error
+  }
+  try {
+    return fillWorker(fd, outDir)
+  } finally { closeSync(fd) }
+}
+
+function fillWorker(fd: number, outDir: string) {
   const files = (dir: string): string[] => readdirSync(resolve(outDir, dir), { withFileTypes: true }).flatMap(entry => {
     const path = dir ? `${dir}/${entry.name}` : entry.name
     return entry.isDirectory() ? files(path) : [path]
@@ -17,7 +28,7 @@ export function writeOfflineShell(outDir: string) {
   const assets = files('').filter(path => path !== 'sw.js').sort()
   const hash = createHash('sha256')
   for (const path of assets) { hash.update(path); hash.update(readFileSync(resolve(outDir, path))) }
-  const template = readFileSync(workerPath, 'utf8')
+  const template = readFileSync(fd, 'utf8')
   const precache = /\/\* __PRECACHE__ \*\/ \[[^\]]*\]/
   // Fail the build rather than ship a worker that caches the wrong files.
   if (!template.includes('__BUILD_ID__') || !precache.test(template)) {
@@ -26,7 +37,8 @@ export function writeOfflineShell(outDir: string) {
   const worker = template
     .replace('__BUILD_ID__', hash.digest('hex').slice(0, 16))
     .replace(precache, JSON.stringify(assets.map(path => `/${path}`)))
-  writeFileSync(workerPath, worker)
+  ftruncateSync(fd)
+  writeSync(fd, worker, 0)
   return assets
 }
 

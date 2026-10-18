@@ -12,6 +12,8 @@ self.addEventListener('install', event => {
 })
 
 self.addEventListener('message', event => {
+  // Only this app's own pages may activate a waiting update.
+  if (event.origin !== self.location.origin) return
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
 })
 

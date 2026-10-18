@@ -56,9 +56,11 @@ it('leaves API, external, and write requests alone and cleans only its own cache
 
 it('activates a waiting update only when the page asks for it', () => {
   const instance = worker()
-  instance.handlers.message({ data: { type: 'other' } })
-  instance.handlers.message({ data: null })
+  const origin = 'https://tasks.test'
+  instance.handlers.message({ origin, data: { type: 'other' } })
+  instance.handlers.message({ origin, data: null })
+  instance.handlers.message({ origin: 'https://evil.test', data: { type: 'SKIP_WAITING' } })
   expect(instance.skipped).toEqual([])
-  instance.handlers.message({ data: { type: 'SKIP_WAITING' } })
+  instance.handlers.message({ origin, data: { type: 'SKIP_WAITING' } })
   expect(instance.skipped).toEqual([true])
 })
