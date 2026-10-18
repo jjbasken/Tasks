@@ -40,7 +40,7 @@ export const session = {
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
       if (payload.exp && payload.exp * 1000 <= Date.now()) {
-        session.clear()
+        token = null
         return null
       }
     } catch { session.clear(); return null }

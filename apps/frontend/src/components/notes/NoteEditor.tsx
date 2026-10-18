@@ -147,8 +147,10 @@ function UnlockedEditor(props: Props) {
   // Save on leaving the note or the page, never lose the last keystrokes.
   useEffect(() => {
     const onHide = () => flush()
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush() }
     window.addEventListener('pagehide', onHide)
-    return () => { window.removeEventListener('pagehide', onHide); flush() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onVisibility); flush() }
   }, [])
 
   // Adopt edits from another device while this note has no unsaved typing.

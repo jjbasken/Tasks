@@ -246,6 +246,12 @@ Not supported: encrypted StandardNotes backups, StandardNotes file attachments (
 
 ### Offline changes
 
+The production PWA downloads its HTML, scripts, styles, and icons together before the service worker installs. Installed updates wait until existing app windows close. Previously visited routes can then launch without a connection, including direct links to tasks or notes.
+
+Sign in with a username and passphrase once on each phone while connected. The app saves a passphrase-encrypted offline identity and a passphrase-encrypted snapshot of lists, tasks, and notes that have been loaded on that device. After closing or refreshing, use the same username and passphrase to unlock those saved items offline. Plaintext keys and session tokens are never stored. Device-pairing alone does not set up offline unlocking; sign in with the passphrase once to enable it.
+
+Offline edits stay in the encrypted outbox across closes and locks. Sign in online again after an offline unlock to authorize syncing; retries also run on reconnect, app resume, and periodically while open. Notes flush pending typing when the phone backgrounds the app. Attachments and list/account administration still need a connection; data never loaded on this phone is not available offline. Storage failures show a warning. The app requests persistent storage where supported, but clearing browser/site data still removes local copies and unsynced changes.
+
 Task, note and tag changes are saved as encrypted operations in a browser-local queue scoped to the account. New tasks use stable client-generated IDs so edits and deletes remain valid during replay. Rapid autosaves of the same note are folded into one pending write. Operations are replayed in order; failed requests retain the pending work and display a retry message. Logging out keeps encrypted pending changes for the same account’s next unlock. Queues cannot sync while the vault is locked. Clearing browser storage deletes unsynced changes.
 
 Recurring occurrences record which completed task spawned them. Undo only removes active occurrences with that exact parent; older occurrences without a parent reference are retained.

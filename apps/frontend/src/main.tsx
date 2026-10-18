@@ -15,9 +15,9 @@ void initCrypto().then(() => {
 // Registered from the bundle rather than an inline <script> in index.html: with
 // no inline script on the page the CSP can be a plain `script-src 'self'`, with
 // no hash to keep in sync with the markup.
-if ('serviceWorker' in navigator) {
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {
       // Offline support is optional — a failed registration must not break boot.
     })
   })

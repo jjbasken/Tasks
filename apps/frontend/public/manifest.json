@@ -24,5 +24,7 @@
       "sizes": "any",
       "type": "image/svg+xml"
     }
-  ]
+  ],
+  "id": "/",
+  "scope": "/"
 }

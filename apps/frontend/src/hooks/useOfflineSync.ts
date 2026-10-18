@@ -22,20 +22,24 @@ export function useOfflineSync() {
 
   const sync = useCallback((): Promise<void> => {
     if (syncing) return syncing
-    syncing = replay().finally(() => { syncing = null })
+    const userId = session.getUserId()
+    const run = navigator.locks && userId
+      ? navigator.locks.request(`tasks:sync:${userId}`, () => replay())
+      : replay()
+    syncing = run.finally(() => { syncing = null })
     return syncing
   }, [isLoggedIn, utils, queryClient])
 
   async function replay() {
     const userId = session.getUserId()
-    if (!navigator.onLine || !userId || !isLoggedIn) return
+    if (!navigator.onLine || !userId || !isLoggedIn || !session.getToken()) return
     setError(null)
     const affected = new Set<string>()
     const affectedNotes = new Set<string>()
     try {
       await drainQueue({
         next: () => offlineQueue.getAll(userId)[0],
-        canContinue: () => navigator.onLine && session.getUserId() === userId,
+        canContinue: () => navigator.onLine && session.getUserId() === userId && !!session.getToken(),
         send: mutation => isNoteMutation(mutation)
           ? sendQueuedNoteMutation(utils.client, mutation)
           : sendQueuedMutation(utils.client.tasks, mutation),
@@ -68,9 +72,12 @@ export function useOfflineSync() {
   useEffect(() => {
     sync()
     const retry = () => { sync() }
+    const resume = () => { if (document.visibilityState === 'visible') retry() }
     window.addEventListener('online', retry)
+    window.addEventListener('pageshow', retry)
+    document.addEventListener('visibilitychange', resume)
     const interval = window.setInterval(retry, 30_000)
-    return () => { window.removeEventListener('online', retry); window.clearInterval(interval) }
+    return () => { window.removeEventListener('online', retry); window.removeEventListener('pageshow', retry); document.removeEventListener('visibilitychange', resume); window.clearInterval(interval) }
   }, [sync])
   useEffect(() => { if (pendingCount > 0) sync() }, [revision, isLoggedIn, sync])
 

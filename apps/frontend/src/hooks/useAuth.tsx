@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { queryClient } from '../lib/queryClient.js'
 import { session } from '../lib/session.js'
+import { rememberOfflineAccount, unlockOfflineAccount, restoreOfflineData, watchOfflineData, offlineStorageStatus } from '../lib/offlineVault.js'
 import { trpc } from '../lib/trpc.js'
 import {
   initCrypto, generateKdfSalt, deriveStretchKey, deriveServerPassword, generateKeypair,
@@ -26,9 +27,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(() => session.getIsAdmin())
   const utils = trpc.useUtils()
 
+  useEffect(() => watchOfflineData(queryClient), [])
+
+  async function unlockOffline(username: string, passphrase: string) {
+    const saved = await unlockOfflineAccount(username, passphrase)
+    queryClient.clear()
+    session.clear()
+    session.setStretchKey(saved.key)
+    saved.key.fill(0)
+    session.setPrivateKey(saved.privateKey)
+    session.setPublicKey(saved.publicKey)
+    session.setUserId(saved.userId)
+    try { restoreOfflineData(queryClient) } catch (error) { offlineStorageStatus.report(error) }
+    setIsAdmin(false)
+    setIsLoggedIn(true)
+  }
+
   async function login(username: string, passphrase: string) {
     await initCrypto()
-    const challenge = await utils.auth.getLoginChallenge.fetch({ username })
+    if (!navigator.onLine) return unlockOffline(username, passphrase)
+    let challenge
+    try {
+      challenge = await utils.client.auth.getLoginChallenge.query({ username })
+    } catch (error: any) {
+      // Do not bypass an explicit authentication/rate-limit response.
+      if (!error?.data && error?.cause) return unlockOffline(username, passphrase)
+      throw error
+    }
     const stretchKey = await deriveStretchKey(passphrase, challenge.kdfSalt)
     const serverPassword = deriveServerPassword(stretchKey)
     const result = await utils.client.auth.login.mutate({ username, passwordHash: serverPassword })
@@ -40,6 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userInfo = await utils.client.users.search.query({ username })
       if (!userInfo) throw new Error('Account not found')
       await finishUnlock(stretchKey, privateKeyB64, userInfo.publicKey)
+      try {
+        rememberOfflineAccount(username, challenge.kdfSalt, stretchKey, {
+          userId: session.getUserId()!, privateKey: privateKeyB64, publicKey: userInfo.publicKey,
+        })
+        offlineStorageStatus.report(null, 'account')
+      } catch (error) { offlineStorageStatus.report(error, 'account') }
     } catch (error) {
       session.clear()
       throw error
@@ -54,6 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session.setPublicKey(publicKey)
     session.setUserId(me.id)
     session.setIsAdmin(me.isAdmin)
+    try { restoreOfflineData(queryClient) } catch (error) { offlineStorageStatus.report(error) }
+    if (navigator.storage?.persist) void navigator.storage.persist().catch(() => {})
     setIsAdmin(me.isAdmin)
     setIsLoggedIn(true)
   }
