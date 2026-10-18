@@ -22,7 +22,9 @@ export function filePath(id: string) {
   if (!UUID.test(id)) throw new Error('Invalid file id')
   const root = filesRoot()
   mkdirSync(root, { recursive: true })
-  return join(root, id.toLowerCase())
+  // SQLite IDs are case-sensitive; preserve case so distinct reservations
+  // can never alias the same stored blob.
+  return join(root, id)
 }
 
 export async function removeStoredFiles(ids: string[]) {

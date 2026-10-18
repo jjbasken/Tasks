@@ -26,7 +26,7 @@ export function noteToMarkdown(note: NotePayload, tags: DecryptedTag[]): string 
 }
 
 export function safeFilename(name: string) {
-  const cleaned = name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120)
+  const cleaned = name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120).replace(/[. ]+$/g, '')
   return cleaned || 'Untitled'
 }
 
@@ -63,6 +63,7 @@ export async function buildNotesArchive(opts: {
   const backup: TasksNotesBackup = { format: 'tasks-notes', version: 1, exported_at: new Date().toISOString(), lists: [] }
   const usedFolders = new Set<string>()
   const total = opts.notes.length + opts.attachments.length
+  const attachmentPaths = new Map(opts.attachments.map(a => [a.id, `attachments/${a.id}-${safeFilename(a.name)}`]))
   let done = 0
   for (const list of opts.lists) {
     const listNotes = opts.notes.filter(n => n.listId === list.id)
@@ -72,7 +73,10 @@ export async function buildNotesArchive(opts: {
     const usedNames = new Set<string>()
     for (const note of listNotes) {
       const sub = note.trashed_at ? 'Trash/' : note.archived ? 'Archive/' : ''
-      files[`${folder}/${sub}${uniqueName(usedNames, safeFilename(displayTitle({ ...note, protected: false })), '.md')}`] = strToU8(noteToMarkdown(note, listTags))
+      files[`${folder}/${sub}${uniqueName(usedNames, safeFilename(displayTitle({ ...note, protected: false })), '.md')}`] = strToU8(noteToMarkdown(note, listTags).replace(/attachment:([0-9a-f-]+)/gi, (reference, id: string) => {
+        const path = attachmentPaths.get(id)
+        return path ? `${sub ? '../../' : '../'}${path.split('/').map(segment => encodeURIComponent(segment).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16)}`)).join('/')}` : reference
+      }))
       opts.onProgress?.(++done, total)
     }
     backup.lists.push({

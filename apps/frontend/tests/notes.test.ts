@@ -243,3 +243,36 @@ describe('Super table conversion', async () => {
     expect(md).toBe('| path | note |\n| --- | --- |\n| C:\\\\dir\\\\ | a\\|b |\n| x y | z |')
   })
 })
+
+describe('backup review regressions', async () => {
+  const { safeFilename, buildNotesArchive } = await import('../src/lib/notesExport.js')
+  const { parseBackupFile } = await import('../src/lib/notesImport.js')
+  const { unzipSync, zipSync, strToU8, strFromU8 } = await import('fflate')
+
+  it('never exports dot directories and makes attachment links portable', async () => {
+    expect(safeFilename('..')).toBe('Untitled')
+    expect(safeFilename('.')).toBe('Untitled')
+    const id = '12345678-1234-4234-8234-123456789abc'
+    const zip = await buildNotesArchive({
+      lists: [{ id: 'l', name: '..' }],
+      notes: [{ ...model.newNotePayload(), id: 'n', listId: 'l', updatedAt: 1, text: `![image](attachment:${id})`, archived: true }],
+      tags: [], attachments: [{ id, name: 'my image.png', mime: 'image/png', file_key: '', size: 1, uploaded: true, createdAt: 1 }],
+      fetchAttachment: async () => new Blob(['x']),
+    })
+    const files = unzipSync(zip)
+    expect(Object.keys(files).some(name => name.startsWith('../'))).toBe(false)
+    const md = Object.keys(files).find(name => name.endsWith('.md'))!
+    expect(strFromU8(files[md])).toContain(`../../attachments/${id}-my%20image.png`)
+  })
+
+  it('skips unrelated JSON files before finding a valid backup in a zip', async () => {
+    const zip = zipSync({ 'metadata.json': strToU8('{"hello":1}'), 'backup.json': strToU8('{"items":[]}') })
+    const result = await parseBackupFile(new File([zip as BlobPart], 'backup.zip'))
+    expect(result.notes).toEqual([])
+  })
+
+  it('bounds decompression before allocating a large text entry', async () => {
+    const zip = zipSync({ 'backup.json': new Uint8Array(65 * 1024 * 1024) })
+    await expect(parseBackupFile(new File([zip as BlobPart], 'backup.zip'))).rejects.toThrow('64 MB')
+  })
+})

@@ -27,8 +27,8 @@ export async function sendQueuedMutation(api: TaskApi, mutation: TaskMutation) {
 type NoteApi = {
   notes: {
     create: { mutate: (input: { id: string; listId: string; encryptedPayload: string }) => Promise<unknown> }
-    update: { mutate: (input: { noteId: string; encryptedPayload: string }) => Promise<unknown> }
-    delete: { mutate: (input: { noteId: string }) => Promise<unknown> }
+    update: { mutate: (input: { noteId: string; listId: string; encryptedPayload: string }) => Promise<unknown> }
+    delete: { mutate: (input: { noteId: string; listId: string }) => Promise<unknown> }
   }
   tags: {
     create: { mutate: (input: { id: string; listId: string; encryptedPayload: string }) => Promise<unknown> }
@@ -49,8 +49,8 @@ async function ignoreMissing(send: Promise<unknown>) {
 export async function sendQueuedNoteMutation(api: NoteApi, m: NoteMutation) {
   switch (m.type) {
     case 'note.create': return void await api.notes.create.mutate({ id: m.noteId, listId: m.listId, encryptedPayload: m.encryptedPayload })
-    case 'note.update': return ignoreMissing(api.notes.update.mutate({ noteId: m.noteId, encryptedPayload: m.encryptedPayload }))
-    case 'note.delete': return ignoreMissing(api.notes.delete.mutate({ noteId: m.noteId }))
+    case 'note.update': return ignoreMissing(api.notes.update.mutate({ noteId: m.noteId, listId: m.listId, encryptedPayload: m.encryptedPayload }))
+    case 'note.delete': return ignoreMissing(api.notes.delete.mutate({ noteId: m.noteId, listId: m.listId }))
     case 'tag.create': return void await api.tags.create.mutate({ id: m.tagId, listId: m.listId, encryptedPayload: m.encryptedPayload })
     case 'tag.update': return ignoreMissing(api.tags.update.mutate({ tagId: m.tagId, encryptedPayload: m.encryptedPayload }))
     case 'tag.delete': return ignoreMissing(api.tags.delete.mutate({ tagId: m.tagId }))

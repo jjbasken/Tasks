@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto'
+import { renameSync, rmSync } from 'fs'
 import { TRPCError } from '@trpc/server'
 import { and, eq, sum } from 'drizzle-orm'
 import { z } from 'zod'
@@ -33,19 +35,22 @@ export const filesRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await assertListAccess(ctx.db, input.listId, ctx.userId)
-      // Tie the file to a note in the same list, so nobody can hang files off a
-      // note in a list they cannot see (and block its move or deletion).
-      const [note] = await ctx.db.select({ listId: notes.listId }).from(notes).where(eq(notes.id, input.noteId))
-      if (!note || note.listId !== input.listId) throw new TRPCError({ code: 'NOT_FOUND', message: 'Save the note before attaching files' })
-      const [existing] = await ctx.db.select({ id: files.id }).from(files).where(eq(files.id, input.fileId))
-      if (existing) throw new TRPCError({ code: 'CONFLICT' })
-      if (await usedBytes(ctx.db, ctx.userId) + input.size > FILES_QUOTA_BYTES) {
-        throw new TRPCError({ code: 'PAYLOAD_TOO_LARGE', message: 'Attachment storage quota exceeded' })
-      }
-      await ctx.db.insert(files).values({
-        id: input.fileId, listId: input.listId, noteId: input.noteId, uploaderId: ctx.userId,
-        size: input.size, encryptedMetadata: input.encryptedMetadata, uploaded: false, createdAt: Date.now(),
-      })
+      ctx.db.transaction(tx => {
+        // Tie the file to a note in the same list, so nobody can hang files off a
+        // note in a list they cannot see (and block its move or deletion).
+        const [note] = tx.select({ listId: notes.listId }).from(notes).where(eq(notes.id, input.noteId)).all()
+        if (!note || note.listId !== input.listId) throw new TRPCError({ code: 'NOT_FOUND', message: 'Save the note before attaching files' })
+        const [existing] = tx.select({ id: files.id }).from(files).where(eq(files.id, input.fileId)).all()
+        if (existing) throw new TRPCError({ code: 'CONFLICT' })
+        const [usage] = tx.select({ total: sum(files.size) }).from(files).where(eq(files.uploaderId, ctx.userId)).all()
+        if (Number(usage?.total ?? 0) + input.size > FILES_QUOTA_BYTES) {
+          throw new TRPCError({ code: 'PAYLOAD_TOO_LARGE', message: 'Attachment storage quota exceeded' })
+        }
+        tx.insert(files).values({
+          id: input.fileId, listId: input.listId, noteId: input.noteId, uploaderId: ctx.userId,
+          size: input.size, encryptedMetadata: input.encryptedMetadata, uploaded: false, createdAt: Date.now(),
+        }).run()
+      }, { behavior: 'immediate' })
       return { id: input.fileId }
     }),
 
@@ -91,6 +96,8 @@ async function authorize(ctx: AppContext, fileId: string) {
   }
 }
 
+const activeUploads = new Set<string>()
+
 /** Raw ciphertext upload for a reserved file row. */
 export async function handleFileUpload(ctx: AppContext, fileId: string, req: Request): Promise<Response> {
   const { file, error } = await authorize(ctx, fileId)
@@ -103,19 +110,46 @@ export async function handleFileUpload(ctx: AppContext, fileId: string, req: Req
   // buffering the remainder.
   const reader = req.body?.getReader()
   if (!reader) return httpError(400, 'Missing body')
-  const chunks: Uint8Array[] = []
-  let received = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    received += value.byteLength
-    if (received > file.size) { await reader.cancel(); return httpError(400, 'Size does not match the reservation') }
-    chunks.push(value)
+  if (activeUploads.has(file.id)) { await reader.cancel(); return httpError(409, 'Upload already in progress') }
+  activeUploads.add(file.id)
+  // Stream into a temporary file with bounded memory. Publish it only after
+  // checking that its reservation and permissions still hold.
+  const staged = `${filePath(file.id)}.${randomUUID()}.tmp`
+  const writer = Bun.file(staged).writer({ highWaterMark: 64 * 1024 })
+  let ended = false
+  try {
+    let received = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > file.size) return httpError(400, 'Size does not match the reservation')
+      writer.write(value)
+      await writer.flush()
+    }
+    if (received !== file.size) return httpError(400, 'Size does not match the reservation')
+    await writer.end()
+    ended = true
+    const currentAuth = await authorize(ctx, fileId)
+    if (currentAuth.error) return currentAuth.error
+    return ctx.db.transaction(tx => {
+      const current = tx.select().from(files).where(eq(files.id, file.id)).get()
+      if (!current) return httpError(404, 'Not found')
+      if (current.uploaded) return httpError(409, 'Already uploaded')
+      if (current.listId !== file.listId || current.encryptedMetadata !== file.encryptedMetadata) return httpError(409, 'Attachment changed during upload')
+      renameSync(staged, filePath(file.id))
+      tx.update(files).set({ uploaded: true }).where(eq(files.id, file.id)).run()
+      return new Response(null, { status: 204 })
+    }, { behavior: 'immediate' })
+  } finally {
+    try {
+      if (!ended) await writer.end()
+    } finally {
+      activeUploads.delete(file.id)
+      await reader.cancel().catch(() => {})
+      rmSync(staged, { force: true })
+    }
   }
-  if (received !== file.size) return httpError(400, 'Size does not match the reservation')
-  await Bun.write(filePath(file.id), new Blob(chunks as BlobPart[]))
-  await ctx.db.update(files).set({ uploaded: true }).where(eq(files.id, file.id))
-  return new Response(null, { status: 204 })
 }
 
 export async function handleFileDownload(ctx: AppContext, fileId: string): Promise<Response> {

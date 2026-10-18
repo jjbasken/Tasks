@@ -106,23 +106,22 @@ export function NotesPage() {
     : VIEW_TITLES[activeView.kind]
 
   function guard(action: () => void) {
-    try { setError(null); action() } catch (err) { setError(err instanceof Error ? err.message : 'Could not save the change') }
+    try { setError(null); action(); return true } catch (err) { setError(err instanceof Error ? err.message : 'Could not save the change'); return false }
   }
 
   function save(note: DecryptedNote, payload: NotePayload) {
-    guard(() => actions.saveNote(note, payload))
+    return guard(() => actions.saveNote(note, payload))
   }
 
   /** Find or create each segment of a slash path such as "work/projects". */
-  function ensureTagPath(listId: string, path: string): string | null {
+  function ensureTagPath(listId: string, path: string, created: DecryptedTag[] = []): string | null {
     let parentId: string | null = null
-    let created: DecryptedTag[] = []
     for (const segment of path.split('/').map(s => s.trim()).filter(Boolean)) {
       const pool = [...tagsFor(listId), ...created]
       const existing = pool.find(t => t.parent_id === parentId && t.title.toLowerCase() === segment.toLowerCase())
       if (existing) { parentId = existing.id; continue }
       const id: string = actions.createTag(listId, { title: segment, parent_id: parentId })
-      created = [...created, { id, listId, title: segment, parent_id: parentId }]
+      created.push({ id, listId, title: segment, parent_id: parentId })
       parentId = id
     }
     return parentId
@@ -146,6 +145,7 @@ export function NotesPage() {
   }
 
   async function handleAction(note: DecryptedNote, action: EditorMenuAction, latest: NotePayload) {
+    if (latest.protected && !(await gate.requestUnlock('Using a protected note needs your passphrase.'))) return
     const now = new Date().toISOString()
     switch (action) {
       case 'pin': return save(note, { ...latest, pinned: !latest.pinned })
@@ -201,7 +201,8 @@ export function NotesPage() {
     await requireSynced(note.id)
     const current = latestNote(noteId) ?? note
     const sourceTags = tagsFor(current.listId)
-    const tagIds = liveTagIds(current, sourceTags).map(id => ensureTagPath(toListId, tagPath(sourceTags, id))).filter((id): id is string => !!id)
+    const createdTags: DecryptedTag[] = []
+    const tagIds = liveTagIds(current, sourceTags).map(id => ensureTagPath(toListId, tagPath(sourceTags, id), createdTags)).filter((id): id is string => !!id)
     const payload: NotePayload = { ...stripNote(current), tag_ids: tagIds }
     const rows = await utils.client.files.forList.query({ listId: current.listId })
     const files = rows.filter(r => r.noteId === current.id).map(row => {
@@ -210,7 +211,7 @@ export function NotesPage() {
       const { id, uploaded: _u, createdAt: _c, noteId: _n, ...metadata } = meta
       return { id, encryptedMetadata: encryptMetadata(metadata, toKey) }
     })
-    await utils.client.notes.move.mutate({ noteId: current.id, toListId, encryptedPayload: encryptNote(payload, toKey), files })
+    await utils.client.notes.move.mutate({ noteId: current.id, listId: current.listId, toListId, encryptedPayload: encryptNote(payload, toKey), files })
     queryClient.setQueryData<NotesCache>(notesQueryKey(current.listId), cache => cache && { ...cache, notes: cache.notes.filter(n => n.id !== current.id) })
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: notesQueryKey(current.listId) }),
@@ -241,13 +242,17 @@ export function NotesPage() {
     try {
       const rows = await utils.files.forList.fetch({ listId: note.listId })
       const row = rows.find(r => r.id === attachmentId && r.uploaded)
+      const owner = row && latestNote(row.noteId)
+      if (!owner || (owner.protected && !gate.unlocked)) return null
       const meta = row && decryptMetadata(row, key)
       return meta ? await attachmentUrl(meta) : null
     } catch { return null }
-  }, [selectedId, keys, utils])
+  }, [selectedId, keys, utils, gate.unlocked])
 
   async function openAttachment(attachment: Attachment) {
     try {
+      const owner = attachment.noteId && latestNote(attachment.noteId)
+      if (owner && owner.protected && !(await gate.requestUnlock('Opening a protected attachment needs your passphrase.'))) return
       saveBlob(await fetchAttachment(attachment), attachment.name)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not download the attachment')
@@ -283,11 +288,14 @@ export function NotesPage() {
 
   async function deleteAttachment(noteId: string, attachment: Attachment) {
     try {
+      const owner = latestNote(noteId)
+      if (owner?.protected && !(await gate.requestUnlock('Deleting a protected attachment needs your passphrase.'))) return
+      if (owner?.locked) throw new Error('Allow editing of this note before deleting attachments.')
       await utils.client.files.delete.mutate({ fileId: attachment.id })
       const current = latestNote(noteId)
       if (current) save(current, { ...stripNote(current), attachment_ids: current.attachment_ids.filter(id => id !== attachment.id) })
-    } catch {
-      setError('Could not delete the attachment. Check your connection.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the attachment. Check your connection.')
     } finally {
       utils.files.forList.invalidate()
       utils.files.usage.invalidate()
@@ -328,6 +336,7 @@ export function NotesPage() {
             noteTitle={noteId => { const n = notes.find(x => x.id === noteId); return n ? (n.protected ? 'Protected note' : n.title || 'Untitled') : null }}
             onOpenNote={noteId => { setView({ kind: 'all' }); setSelectedId(noteId); setPane('editor') }}
             onDownload={openAttachment}
+            onDelete={a => { if (a.noteId && window.confirm(`Delete "${a.name}" forever?`)) deleteAttachment(a.noteId, a) }}
             usage={usage.data}
             onBack={() => setPane('nav')}
           />

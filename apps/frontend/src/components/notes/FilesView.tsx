@@ -5,11 +5,12 @@ type Props = {
   noteTitle: (noteId: string | undefined) => string | null
   onOpenNote: (noteId: string) => void
   onDownload: (attachment: Attachment) => void
+  onDelete: (attachment: Attachment) => void
   usage?: { used: number; quota: number }
   onBack?: () => void
 }
 
-export function FilesView({ files, noteTitle, onOpenNote, onDownload, usage, onBack }: Props) {
+export function FilesView({ files, noteTitle, onOpenNote, onDownload, onDelete, usage, onBack }: Props) {
   return (
     <div className="note-list-pane notes-files">
       <div className="note-list-header">
@@ -30,6 +31,8 @@ export function FilesView({ files, noteTitle, onOpenNote, onDownload, usage, onB
                 <span>· {new Date(f.createdAt).toLocaleDateString()}</span>
                 {title && f.noteId && <button className="notes-file-note" onClick={() => onOpenNote(f.noteId!)}>· {title}</button>}
               </div>
+              {!f.uploaded && <span className="hint-text">Upload incomplete</span>}
+              <button className="btn-secondary" onClick={() => onDelete(f)}>Delete</button>
               {f.uploaded && <button className="btn-secondary" onClick={() => onDownload(f)}>Download</button>}
             </div>
           )

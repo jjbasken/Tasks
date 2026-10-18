@@ -26,7 +26,7 @@ type Props = {
   tags: DecryptedTag[]
   listName: string
   unlocked: boolean
-  onSave: (note: DecryptedNote, payload: NotePayload) => void
+  onSave: (note: DecryptedNote, payload: NotePayload) => boolean
   onAction: (action: EditorMenuAction, latest: NotePayload) => void
   onAddTag: (path: string) => string | null
   onRequestUnlock: () => void
@@ -56,20 +56,16 @@ export function NoteEditor(props: Props) {
       </div>
     )
   }
-  return <UnlockedEditor key={note.id} {...props} tags={tags} />
+  return <UnlockedEditor key={`${note.id}:${note.listId}`} {...props} tags={tags} />
 }
 
-// Actions that do not themselves save the note: persist pending typing first so
-// what they read (history, a move, an export) matches what is on screen.
-const FLUSH_FIRST: EditorMenuAction[] = ['history', 'move', 'export', 'duplicate']
-
-function EditorHeader({ note, title, onBack, onAction, listName, latest, flush }: Props & { title: string; latest?: () => NotePayload; flush?: () => void }) {
+function EditorHeader({ note, title, onBack, onAction, listName, latest, flush }: Props & { title: string; latest?: () => NotePayload; flush?: () => boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const current = () => latest?.() ?? stripNote(note)
   const act = (action: EditorMenuAction) => {
     setMenuOpen(false)
     const payload = current()
-    if (FLUSH_FIRST.includes(action)) flush?.()
+    if (flush?.() === false) return
     onAction(action, payload)
   }
   const trashed = !!note.trashed_at
@@ -141,10 +137,11 @@ function UnlockedEditor(props: Props) {
 
   const flush = () => {
     if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null }
-    if (!dirty.current) return
+    if (!dirty.current) return true
     const payload = latest()
+    if (!saveRef.current(latestNote.current, payload)) return false
     dirty.current = false
-    saveRef.current(latestNote.current, payload)
+    return true
   }
 
   // Save on leaving the note or the page, never lose the last keystrokes.
@@ -185,6 +182,7 @@ function UnlockedEditor(props: Props) {
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (readOnly) return
     const mod = e.metaKey || e.ctrlKey
     if (mod && e.key === 'b') { e.preventDefault(); format('bold') }
     else if (mod && e.key === 'i') { e.preventDefault(); format('italic') }
@@ -215,6 +213,7 @@ function UnlockedEditor(props: Props) {
 
   async function handleFiles(list: FileList | null) {
     if (!list?.length || !props.uploadFiles) return
+    if (!flush()) return
     const uploaded = await props.uploadFiles([...list])
     if (fileInput.current) fileInput.current.value = ''
     if (uploaded.length) insertAtCursor(uploaded.map(a => attachmentMarkdown(a.id, a.name, isImage(a.mime))).join('\n'))

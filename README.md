@@ -225,7 +225,7 @@ Notes, nested tags, and pinned, archived, trashed, read-only and protected state
 
 Not supported: encrypted StandardNotes backups, StandardNotes file attachments (its backups do not contain them; download them from StandardNotes and attach them here), the Super rich-text editor and other editors (spreadsheets, code), Listed publishing, custom smart views, and note-to-note links.
 
-**Export** — Settings → Notes → Export all notes downloads a zip with one Markdown file per note (tags and dates in YAML front matter), your attachments, and `notes-backup.json`, which this app can import for a lossless restore. The export is decrypted; store it accordingly.
+**Export** — Settings → Notes → Export all notes downloads a zip with one Markdown file per note (tags and dates in YAML front matter), your attachments, and `notes-backup.json`, which this app can import to restore note text, tags and flags. Import does not restore attachments or revision history: save the attachment files from the zip and reattach them manually. Markdown exports link to the attachment files in the zip. Browser imports accept files up to 256 MiB with at most 64 MiB of expanded text. The export is decrypted; store it accordingly.
 
 ---
 

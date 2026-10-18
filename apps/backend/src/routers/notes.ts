@@ -14,9 +14,9 @@ import {
 const noteInput = z.object({ id: z.string().uuid(), encryptedPayload: z.string().max(MAX_NOTE_PAYLOAD) })
 const tagInput = z.object({ id: z.string().uuid(), encryptedPayload: z.string().max(MAX_TAG_PAYLOAD) })
 
-async function loadNote(db: any, noteId: string, userId: string) {
+async function loadNote(db: any, noteId: string, userId: string, expectedListId?: string) {
   const [note] = await db.select().from(notes).where(eq(notes.id, noteId))
-  if (!note) throw new TRPCError({ code: 'NOT_FOUND' })
+  if (!note || (expectedListId !== undefined && note.listId !== expectedListId)) throw new TRPCError({ code: 'NOT_FOUND' })
   await assertListAccess(db, note.listId, userId)
   return note as typeof notes.$inferSelect
 }
@@ -34,7 +34,7 @@ function insertIdempotent(tx: any, table: typeof notes | typeof noteTags, listId
   }
   // A re-import of a previously deleted id resurrects it; the tombstone would
   // otherwise tell syncing clients to drop the fresh row.
-  tx.delete(syncTombstones).where(eq(syncTombstones.id, id)).run()
+  tx.delete(syncTombstones).where(and(eq(syncTombstones.id, id), eq(syncTombstones.listId, listId), eq(syncTombstones.kind, table === notes ? 'note' : 'tag'))).run()
   tx.insert(table).values({ id, listId, encryptedPayload, createdAt: now, updatedAt: now }).run()
 }
 
@@ -44,11 +44,11 @@ export function deleteNotesInTx(tx: any, listId: string, noteIds: string[], now:
   const owned = and(eq(files.listId, listId), inArray(files.noteId, noteIds))
   const fileIds = tx.select({ id: files.id }).from(files).where(owned).all().map((f: { id: string }) => f.id)
   tx.delete(files).where(owned).run()
-  tx.delete(noteRevisions).where(inArray(noteRevisions.noteId, noteIds)).run()
-  tx.delete(notes).where(inArray(notes.id, noteIds)).run()
+  tx.delete(noteRevisions).where(and(eq(noteRevisions.listId, listId), inArray(noteRevisions.noteId, noteIds))).run()
+  tx.delete(notes).where(and(eq(notes.listId, listId), inArray(notes.id, noteIds))).run()
   for (const id of noteIds) {
     tx.insert(syncTombstones).values({ id, listId, kind: 'note', deletedAt: now })
-      .onConflictDoUpdate({ target: syncTombstones.id, set: { deletedAt: now, listId, kind: 'note' } }).run()
+      .onConflictDoUpdate({ target: [syncTombstones.listId, syncTombstones.kind, syncTombstones.id], set: { deletedAt: now, listId, kind: 'note' } }).run()
   }
   return fileIds as string[]
 }
@@ -65,7 +65,7 @@ export const notesRouter = router({
         const tagRows = tx.select().from(noteTags).where(and(eq(noteTags.listId, input.listId), gte(noteTags.updatedAt, input.since))).all()
         const deleted = input.since === 0 ? [] : tx.select({ id: syncTombstones.id, kind: syncTombstones.kind, deletedAt: syncTombstones.deletedAt })
           .from(syncTombstones).where(and(eq(syncTombstones.listId, input.listId), gte(syncTombstones.deletedAt, input.since))).all()
-        const cursor = Math.max(input.since, ...noteRows.map(r => r.updatedAt), ...tagRows.map(r => r.updatedAt), ...deleted.map(d => d.deletedAt))
+        const cursor = [...noteRows.map(r => r.updatedAt), ...tagRows.map(r => r.updatedAt), ...deleted.map(d => d.deletedAt)].reduce((max, time) => Math.max(max, time), input.since)
         return { notes: noteRows, tags: tagRows, deleted: deleted.map(({ id, kind }) => ({ id, kind })), cursor }
       })
     }),
@@ -79,12 +79,12 @@ export const notesRouter = router({
     }),
 
   update: protectedProcedure
-    .input(z.object({ noteId: z.string().max(MAX_ID), encryptedPayload: z.string().max(MAX_NOTE_PAYLOAD) }))
+    .input(z.object({ noteId: z.string().max(MAX_ID), listId: z.string().max(MAX_ID), encryptedPayload: z.string().max(MAX_NOTE_PAYLOAD) }))
     .mutation(async ({ ctx, input }) => {
-      await loadNote(ctx.db, input.noteId, ctx.userId)
+      await loadNote(ctx.db, input.noteId, ctx.userId, input.listId)
       ctx.db.transaction(tx => {
         const [note] = tx.select().from(notes).where(eq(notes.id, input.noteId)).all()
-        if (!note) throw new TRPCError({ code: 'NOT_FOUND' })
+        if (!note || note.listId !== input.listId) throw new TRPCError({ code: 'NOT_FOUND' })
         if (note.encryptedPayload === input.encryptedPayload) return
         const now = Date.now()
         const [latest] = tx.select({ createdAt: noteRevisions.createdAt }).from(noteRevisions)
@@ -103,9 +103,9 @@ export const notesRouter = router({
 
   // Permanent. Moving to the trash is an ordinary update of the encrypted flags.
   delete: protectedProcedure
-    .input(z.object({ noteId: z.string().max(MAX_ID) }))
+    .input(z.object({ noteId: z.string().max(MAX_ID), listId: z.string().max(MAX_ID) }))
     .mutation(async ({ ctx, input }) => {
-      const note = await loadNote(ctx.db, input.noteId, ctx.userId)
+      const note = await loadNote(ctx.db, input.noteId, ctx.userId, input.listId)
       const fileIds = ctx.db.transaction(tx => deleteNotesInTx(tx, note.listId, [note.id], Date.now()), { behavior: 'immediate' })
       await removeStoredFiles(fileIds)
     }),
@@ -142,15 +142,18 @@ export const notesRouter = router({
   move: protectedProcedure
     .input(z.object({
       noteId: z.string().max(MAX_ID),
+      listId: z.string().max(MAX_ID),
       toListId: z.string().max(MAX_ID),
       encryptedPayload: z.string().max(MAX_NOTE_PAYLOAD),
       files: z.array(z.object({ id: z.string().max(MAX_ID), encryptedMetadata: z.string().max(MAX_FILE_METADATA) })).max(1000),
     }))
     .mutation(async ({ ctx, input }) => {
-      const note = await loadNote(ctx.db, input.noteId, ctx.userId)
+      const note = await loadNote(ctx.db, input.noteId, ctx.userId, input.listId)
       await assertListAccess(ctx.db, input.toListId, ctx.userId)
       if (note.listId === input.toListId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'The note is already in that list' })
       ctx.db.transaction(tx => {
+        const current = tx.select().from(notes).where(eq(notes.id, input.noteId)).get()
+        if (!current || current.listId !== input.listId) throw new TRPCError({ code: 'NOT_FOUND' })
         const attached = tx.select({ id: files.id }).from(files).where(and(eq(files.listId, note.listId), eq(files.noteId, note.id))).all().map(f => f.id)
         const provided = new Set(input.files.map(f => f.id))
         if (attached.length !== provided.size || attached.some(id => !provided.has(id))) {
@@ -163,7 +166,7 @@ export const notesRouter = router({
           tx.update(files).set({ listId: input.toListId, encryptedMetadata: file.encryptedMetadata }).where(eq(files.id, file.id)).run()
         }
         tx.insert(syncTombstones).values({ id: note.id, listId: note.listId, kind: 'note', deletedAt: now })
-          .onConflictDoUpdate({ target: syncTombstones.id, set: { listId: note.listId, kind: 'note', deletedAt: now } }).run()
+          .onConflictDoUpdate({ target: [syncTombstones.listId, syncTombstones.kind, syncTombstones.id], set: { listId: note.listId, kind: 'note', deletedAt: now } }).run()
       }, { behavior: 'immediate' })
     }),
 })
@@ -197,7 +200,7 @@ export const tagsRouter = router({
         const now = Date.now()
         tx.delete(noteTags).where(eq(noteTags.id, tag.id)).run()
         tx.insert(syncTombstones).values({ id: tag.id, listId: tag.listId, kind: 'tag', deletedAt: now })
-          .onConflictDoUpdate({ target: syncTombstones.id, set: { listId: tag.listId, kind: 'tag', deletedAt: now } }).run()
+          .onConflictDoUpdate({ target: [syncTombstones.listId, syncTombstones.kind, syncTombstones.id], set: { listId: tag.listId, kind: 'tag', deletedAt: now } }).run()
       }, { behavior: 'immediate' })
     }),
 })

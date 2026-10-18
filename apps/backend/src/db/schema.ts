@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, uniqueIndex, index, primaryKey } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -80,11 +80,12 @@ export const noteRevisions = sqliteTable('note_revisions', {
 // Permanent deletes of notes and tags, so incremental sync can tell clients what
 // disappeared since their cursor.
 export const syncTombstones = sqliteTable('sync_tombstones', {
-  id: text('id').primaryKey(),
+  id: text('id').notNull(),
   listId: text('list_id').notNull().references(() => lists.id),
   kind: text('kind', { enum: ['note', 'tag'] }).notNull(),
   deletedAt: integer('deleted_at').notNull(),
 }, table => ({
+  pk: primaryKey({ columns: [table.listId, table.kind, table.id] }),
   listDeleted: index('sync_tombstones_list_deleted_idx').on(table.listId, table.deletedAt),
 }))
 

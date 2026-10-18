@@ -13,7 +13,7 @@ export function NotesBackup() {
   const { data: lists = [] } = useListsList()
   const keys = useListKeys(lists)
   const usable = lists.filter(l => keys.has(l.id))
-  const { notes, tags } = useAllNotes(keys)
+  const { notes, tags, isLoading, error: loadError } = useAllNotes(keys)
   const utils = trpc.useUtils()
   const queryClient = useQueryClient()
   const online = useNetworkStatus()
@@ -117,12 +117,13 @@ export function NotesBackup() {
         <p className="hint-text notes-backup-hint">
           In StandardNotes, download a <strong>decrypted</strong> backup (Preferences → Backups), then choose the .txt or .zip file here.
           Notes, nested tags, pinned, archived, trashed, read-only and protected states are kept. Super notes are converted to Markdown.
-          StandardNotes file attachments are not included in its backups and are not imported. A backup exported from this app can be imported the same way.
+          StandardNotes file attachments are not included in its backups and are not imported. A backup exported from this app restores note text, tags and flags the same way; its attachment files must be saved separately and reattached manually.
         </p>
         <input ref={fileInput} type="file" accept=".txt,.json,.zip" hidden onChange={e => choose(e.target.files?.[0])} />
         {parsed && counts && (
           <div className="notes-backup-confirm">
             <p className="hint-text">{parsed.name}: {counts.notes} notes ({counts.trashed} in trash) and {counts.tags} tags.</p>
+            {parsed.result.notes.some(n => n.attachment_ids.length > 0) && <p className="form-error" role="alert">This backup references attachments. Import restores the notes only; save the attachment files from the zip and reattach them manually.</p>}
             <label className="field-label" htmlFor="import-target">Import into</label>
             <select id="import-target" className="field-select" value={target} onChange={e => setTargetListId(e.target.value)}>
               {usable.map(l => <option key={l.id} value={l.id}>{l.name}{l.isShared ? ' (shared — members will see these notes)' : ''}</option>)}
@@ -135,12 +136,13 @@ export function NotesBackup() {
         )}
         <div className="card-row">
           <span className="card-row-label">Export all notes</span>
-          <button className="btn-secondary" disabled={busy || notes.length === 0} onClick={runExport}>Download .zip</button>
+          <button className="btn-secondary" disabled={busy || isLoading || !!loadError || notes.length === 0} onClick={runExport}>Download .zip</button>
         </div>
         <p className="hint-text notes-backup-hint">
-          A decrypted zip: one Markdown file per note (with tags and dates in front matter), your attachments, and a JSON file for a lossless restore. Store it somewhere safe; it is not encrypted.
+          A decrypted zip: one Markdown file per note (with tags and dates in front matter), your attachments, and a JSON file to restore note text, tags and flags. Import does not restore attachment files or revision history. Store it somewhere safe; it is not encrypted.
         </p>
         {status && <p className="hint-text notes-backup-status" role="status">{status}</p>}
+        {loadError && <div className="form-error" role="alert">Notes could not be loaded. Reconnect before exporting a complete backup.</div>}
         {error && <div className="form-error" role="alert">{error}</div>}
       </div>
       {gate.prompt}

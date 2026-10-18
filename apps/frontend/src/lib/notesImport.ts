@@ -33,15 +33,24 @@ export class ImportError extends Error {}
 
 /** Accepts a StandardNotes decrypted backup (.txt/.json or the export .zip), or this app's own backup. */
 export async function parseBackupFile(file: File): Promise<ImportResult> {
+  if (file.size > 256 * 1024 * 1024) throw new ImportError('This backup is too large to import in the browser (256 MB limit).')
   const bytes = new Uint8Array(await file.arrayBuffer())
   // ZIP local-file header "PK\x03\x04".
   if (bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) {
-    const entries = unzipSync(bytes, { filter: entry => /\.(txt|json)$/i.test(entry.name) && !entry.name.startsWith('__MACOSX') })
+    let expanded = 0
+    const entries = unzipSync(bytes, { filter: entry => {
+      if (!/\.(txt|json)$/i.test(entry.name) || entry.name.startsWith('__MACOSX')) return false
+      expanded += entry.originalSize
+      if (expanded > 64 * 1024 * 1024) throw new ImportError('The backup contains too much expanded text (64 MB limit).')
+      return true
+    } })
     // Prefer this app's lossless JSON, then the StandardNotes backup file.
     const names = Object.keys(entries).sort((a, b) => rank(a) - rank(b))
     for (const name of names) {
       try {
-        return parseBackupJson(JSON.parse(strFromU8(entries[name])))
+        const data = JSON.parse(strFromU8(entries[name]))
+        if (!isTasksBackup(data) && !Array.isArray(data?.items)) continue
+        return parseBackupJson(data)
       } catch (err) {
         if (err instanceof ImportError) throw err
       }

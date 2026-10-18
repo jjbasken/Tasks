@@ -21,7 +21,7 @@ function authHeaders(): Record<string, string> {
   return { authorization: `Bearer ${token}` }
 }
 
-type FilesApi = { create: { mutate: (input: { fileId: string; listId: string; noteId: string; size: number; encryptedMetadata: string }) => Promise<unknown> } }
+type FilesApi = { create: { mutate: (input: { fileId: string; listId: string; noteId: string; size: number; encryptedMetadata: string }) => Promise<unknown> }; delete: { mutate: (input: { fileId: string }) => Promise<unknown> } }
 
 /**
  * Each file gets its own random key, carried inside metadata encrypted with the
@@ -34,12 +34,20 @@ export async function uploadAttachment(api: FilesApi, opts: { listId: string; no
   const meta: FileMetadata = { name: opts.file.name || 'attachment', mime: opts.file.type || 'application/octet-stream', size: opts.file.size, file_key: fileKey }
   const sealed = encryptBytes(new Uint8Array(await opts.file.arrayBuffer()), fromBase64(fileKey))
   await api.create.mutate({ fileId, listId: opts.listId, noteId: opts.noteId, size: sealed.byteLength, encryptedMetadata: encryptMetadata(meta, opts.listKey) })
-  const response = await fetch(`/api/files/${fileId}`, { method: 'PUT', headers: { ...authHeaders(), 'content-type': 'application/octet-stream' }, body: sealed as BlobPart })
-  if (!response.ok) throw new Error(response.status === 413 ? 'That file is too large.' : 'The upload failed. Try again.')
+  try {
+    const response = await fetch(`/api/files/${fileId}`, { method: 'PUT', headers: { ...authHeaders(), 'content-type': 'application/octet-stream' }, body: sealed as BlobPart })
+    if (!response.ok) throw new Error(response.status === 413 ? 'That file is too large.' : 'The upload failed. Try again.')
+  } catch (error) {
+    // A failed upload must not silently consume quota for an invisible file.
+    // If the connection is still down, the reservation remains visible in Files.
+    try { await api.delete.mutate({ fileId }) } catch { /* retry deletion from Files */ }
+    throw error
+  }
   return { id: fileId, meta }
 }
 
 const blobUrls = new Map<string, string>()
+let urlGeneration = 0
 
 export async function fetchAttachment(attachment: Pick<Attachment, 'id' | 'file_key' | 'mime'>): Promise<Blob> {
   const response = await fetch(`/api/files/${attachment.id}`, { headers: authHeaders() })
@@ -52,12 +60,16 @@ export async function fetchAttachment(attachment: Pick<Attachment, 'id' | 'file_
 export async function attachmentUrl(attachment: Pick<Attachment, 'id' | 'file_key' | 'mime'>) {
   const cached = blobUrls.get(attachment.id)
   if (cached) return cached
-  const url = URL.createObjectURL(await fetchAttachment(attachment))
+  const generation = urlGeneration
+  const blob = await fetchAttachment(attachment)
+  if (generation !== urlGeneration) throw new Error('The vault was locked while downloading the attachment.')
+  const url = URL.createObjectURL(blob)
   blobUrls.set(attachment.id, url)
   return url
 }
 
 export function revokeAttachmentUrls() {
+  urlGeneration++
   blobUrls.forEach(url => URL.revokeObjectURL(url))
   blobUrls.clear()
 }
