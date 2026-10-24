@@ -14,7 +14,7 @@ COPY tsconfig.base.json ./
 WORKDIR /app/apps/frontend
 RUN bun run vite build
 
-FROM nginxinc/nginx-unprivileged:stable-alpine-slim@sha256:3af0c10d960cc2502427fe1219c52989d309e7d65596869c60a34fd2fa2406f0 AS runner
+FROM nginxinc/nginx-unprivileged:stable-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 AS runner
 COPY --from=builder /app/apps/frontend/dist /usr/share/nginx/html
 COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/frontend/security-headers.conf /etc/nginx/snippets/security-headers.conf
