@@ -1,20 +1,3 @@
-# Accepted risk for the upstream cloudflared image, which we cannot rebuild.
-# Applied only to the tunnel container scan. Each entry expires; when it
-# does, the scan fails again — bump cloudflared or re-review then.
-#
-# cloudflared 2026.10.0 (latest release as of 2026-10-12) bundles Go 1.26.8
-# and golang.org/x/net 0.58.0. These are DoS bugs in HTTP/2 / TLS handling;
-# cloudflared only makes outbound connections to Cloudflare's edge.
-vulnerabilities:
-  - id: CVE-2026-78667
-    statement: Go stdlib net/http DoS; fixed in Go 1.26.9, awaiting cloudflared release
-    expired_at: 2026-11-12
-  - id: CVE-2026-78669
-    statement: Go net/http + x/net HTTP/2 SETTINGS DoS; fixed in Go 1.26.9 / x/net 0.60.0, awaiting cloudflared release
-    expired_at: 2026-11-12
-  - id: CVE-2026-97031
-    statement: Go crypto/tls ECH DoS; fixed in Go 1.26.9, awaiting cloudflared release
-    expired_at: 2026-11-12
-  - id: CVE-2026-84782
-    statement: Debian libssl3t64 in the cloudflared base image; fixed in 3.5.7-1~deb13u3, awaiting cloudflared rebuild
-    expired_at: 2026-11-12
+# cloudflared 2026.10.4 fixes the previously accepted upstream CVEs.
+# Keep the tunnel scan's configured ignore file, with no accepted vulnerabilities.
+vulnerabilities: []
