@@ -17,6 +17,14 @@ type Props = {
   onClickTask: (task: DecryptedTask) => void
   /** Move a task to a date (YYYY-MM-DD), or null to clear its due date. */
   onMove: (task: DecryptedTask, date: string | null) => void
+  onQuickAddStart?: () => void
+  onQuickAdd: (date: string, title: string) => boolean | Promise<boolean>
+  onOpenAdd: (date: string, title?: string) => void
+  /** Whether this list opens in Calendar by default; the toggle is hidden when omitted. */
+  isDefault?: boolean
+  onToggleDefault?: (next: boolean) => void
+  /** Why the default toggle is unavailable (offline, or a save in flight); disables it when set. */
+  defaultDisabledReason?: string | null
 }
 
 const MODE_KEY = 'tasks.calendar.mode'
@@ -47,7 +55,7 @@ function useToday(): string {
   return today
 }
 
-export function CalendarView({ tasks, onToggle, onClickTask, onMove }: Props) {
+export function CalendarView({ tasks, onToggle, onClickTask, onMove, onQuickAddStart, onQuickAdd, onOpenAdd, isDefault, onToggleDefault, defaultDisabledReason }: Props) {
   const today = useToday()
   const [mode, setModeState] = useState<Mode>(initialMode)
   const [anchor, setAnchor] = useState(today)
@@ -123,6 +131,17 @@ export function CalendarView({ tasks, onToggle, onClickTask, onMove }: Props) {
             <button className="cal-nav-btn" onClick={() => shift(1)} aria-label="Next">›</button>
             <span className="cal-range-title">{rangeTitle}</span>
           </div>
+          {onToggleDefault && (
+            <label className="cal-default-toggle" title={defaultDisabledReason ?? 'Open this list on the Calendar tab on all your devices'}>
+              <input
+                type="checkbox"
+                checked={!!isDefault}
+                disabled={!!defaultDisabledReason}
+                onChange={e => onToggleDefault(e.target.checked)}
+              />
+              Open this list in Calendar
+            </label>
+          )}
           <div className="cal-mode" role="group" aria-label="Calendar view">
             {(['month', 'week'] as Mode[]).map(m => (
               <button key={m} className={`cal-mode-btn${mode === m ? ' active' : ''}`} onClick={() => setMode(m)}>
@@ -147,6 +166,9 @@ export function CalendarView({ tasks, onToggle, onClickTask, onMove }: Props) {
                 isDragging={!!active}
                 onToggle={onToggle}
                 onClickTask={onClickTask}
+                onQuickAddStart={onQuickAddStart}
+                onQuickAdd={onQuickAdd}
+                onOpenAdd={onOpenAdd}
               />
             ))}
           </div>

@@ -219,3 +219,44 @@ describe('list name migration', () => {
     expect((await member.lists.list())[0].encryptedName).toBe('list-key-encrypted-name')
   })
 })
+
+describe('lists.setDefaultView', () => {
+  it('defaults to now and changes only the caller\'s view', async () => {
+    const db = makeTestDb()
+    const aliceId = await seedUser(db, 'alice')
+    const bobId = await seedUser(db, 'bob')
+    const alice = createCaller({ db, userId: aliceId })
+    const bob = createCaller({ db, userId: bobId })
+    const { id } = await alice.lists.create({ encryptedName: '{}', encryptedListKey: 'alice-key' })
+    await alice.lists.invite({ listId: id, inviteeUsername: 'bob', encryptedListKey: 'bob-key' })
+    expect((await alice.lists.list())[0].defaultView).toBe('now')
+
+    await alice.lists.setDefaultView({ listId: id, view: 'calendar' })
+    expect((await alice.lists.list())[0].defaultView).toBe('calendar')
+    expect((await bob.lists.list())[0].defaultView).toBe('now')
+
+    await bob.lists.setDefaultView({ listId: id, view: 'calendar' })
+    await alice.lists.setDefaultView({ listId: id, view: 'now' })
+    expect((await alice.lists.list())[0].defaultView).toBe('now')
+    expect((await bob.lists.list())[0].defaultView).toBe('calendar')
+  })
+
+  it('rejects a caller who is not a member of the list', async () => {
+    const db = makeTestDb()
+    const aliceId = await seedUser(db, 'alice')
+    const malloryId = await seedUser(db, 'mallory')
+    const alice = createCaller({ db, userId: aliceId })
+    const { id } = await alice.lists.create({ encryptedName: '{}', encryptedListKey: 'alice-key' })
+    const mallory = createCaller({ db, userId: malloryId })
+    await expect(mallory.lists.setDefaultView({ listId: id, view: 'calendar' })).rejects.toThrow('FORBIDDEN')
+    expect((await alice.lists.list())[0].defaultView).toBe('now')
+  })
+
+  it('rejects unknown views', async () => {
+    const db = makeTestDb()
+    const aliceId = await seedUser(db, 'alice')
+    const alice = createCaller({ db, userId: aliceId })
+    const { id } = await alice.lists.create({ encryptedName: '{}', encryptedListKey: 'alice-key' })
+    await expect(alice.lists.setDefaultView({ listId: id, view: 'done' as 'now' })).rejects.toThrow()
+  })
+})

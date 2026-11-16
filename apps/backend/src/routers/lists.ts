@@ -15,7 +15,7 @@ function isUniqueViolation(err: unknown): boolean {
 export const listsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const memberships = await ctx.db
-      .select({ list: lists, encryptedListKey: listMemberships.encryptedListKey })
+      .select({ list: lists, encryptedListKey: listMemberships.encryptedListKey, defaultView: listMemberships.defaultView })
       .from(listMemberships)
       .innerJoin(lists, eq(listMemberships.listId, lists.id))
       .where(eq(listMemberships.userId, ctx.userId))
@@ -26,8 +26,22 @@ export const listsRouter = router({
       isPersonal: m.list.isPersonal,
       isOwner: m.list.ownerId === ctx.userId,
       encryptedListKey: m.encryptedListKey,
+      defaultView: m.defaultView === 'calendar' ? 'calendar' as const : 'now' as const,
     }))
   }),
+
+  // A per-member preference: it changes only the caller's membership row, so any
+  // member may set it without affecting what other members of a shared list see.
+  setDefaultView: protectedProcedure
+    .input(z.object({ listId: z.string().max(MAX_ID), view: z.enum(['now', 'calendar']) }))
+    .mutation(async ({ ctx, input }) => {
+      const updated = await ctx.db.update(listMemberships)
+        .set({ defaultView: input.view })
+        .where(and(eq(listMemberships.listId, input.listId), eq(listMemberships.userId, ctx.userId)))
+        .returning({ id: listMemberships.id })
+      if (updated.length === 0) throw new TRPCError({ code: 'FORBIDDEN' })
+      return { ok: true }
+    }),
 
   create: protectedProcedure
     .input(z.object({ encryptedName: z.string().max(MAX_NAME_BLOB), encryptedListKey: z.string().max(MAX_KEY_BLOB) }))

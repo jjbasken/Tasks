@@ -1,19 +1,28 @@
 import { useState } from 'react'
 import { RecurrencePicker } from './RecurrencePicker.js'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../hooks/useTasks.js'
-import type { TaskPayload } from '@tasks/shared'
+import { bucketForDueDate, toLocalISODate, type TaskPayload } from '@tasks/shared'
 
 type Task = TaskPayload & { id: string }
-type Props = { task: Task | null; listId: string; listKeyB64: string; onClose: () => void }
+type Props = {
+  task: Task | null
+  listId: string
+  listKeyB64: string
+  onClose: () => void
+  /** Prefill for a new task (ignored when editing), e.g. the calendar day it was added from. */
+  initialDueDate?: string
+  initialTitle?: string
+}
 
-export function TaskDetail({ task, listId, listKeyB64, onClose }: Props) {
+export function TaskDetail({ task, listId, listKeyB64, onClose, initialDueDate, initialTitle }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [title, setTitle] = useState(task?.title ?? '')
+  const [title, setTitle] = useState(task?.title ?? initialTitle ?? '')
   const [notes, setNotes] = useState(task?.notes ?? '')
-  const [bucket, setBucket] = useState<'now' | 'later'>(task?.bucket ?? 'now')
+  const [bucket, setBucket] = useState<'now' | 'later'>(() =>
+    task?.bucket ?? (initialDueDate ? bucketForDueDate(initialDueDate, toLocalISODate(new Date())) : 'now'))
   const [rrule, setRrule] = useState<string | null>(task?.rrule ?? null)
-  const [dueDate, setDueDate] = useState(task?.due_date ?? '')
+  const [dueDate, setDueDate] = useState(task?.due_date ?? initialDueDate ?? '')
 
   const createTask = useCreateTask(listId)
   const updateTask = useUpdateTask(listId)

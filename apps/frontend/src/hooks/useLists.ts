@@ -1,3 +1,5 @@
+import { useIsMutating } from '@tanstack/react-query'
+import { getMutationKey } from '@trpc/react-query'
 import { trpc } from '../lib/trpc.js'
 import { useEffect } from 'react'
 import { unwrapListKey, readListName, encryptListName } from '../lib/listCrypto.js'
@@ -11,7 +13,14 @@ export type DecryptedList = {
   isPersonal: boolean
   isOwner: boolean
   encryptedListKey: string
+  /** The tab this list opens on for the current user. */
+  defaultView: 'now' | 'calendar'
   needsNameMigration?: boolean
+}
+
+// Rows cached by an older build may lack the field; anything unknown opens in Now.
+function viewOf(row: { defaultView?: unknown }): 'now' | 'calendar' {
+  return row.defaultView === 'calendar' ? 'calendar' : 'now'
 }
 
 export function useListsList() {
@@ -29,9 +38,9 @@ export function useListsList() {
         try {
           const listKey = unwrapListKey(row.encryptedListKey, keys)
           const { name, needsMigration } = readListName(row.encryptedName, listKey, keys, row.isOwner)
-          return { ...row, name, needsNameMigration: needsMigration }
+          return { ...row, defaultView: viewOf(row), name, needsNameMigration: needsMigration }
         } catch {
-          return { ...row, name: 'Unable to decrypt list' }
+          return { ...row, defaultView: viewOf(row), name: 'Unable to decrypt list' }
         }
       })
     },
@@ -78,4 +87,30 @@ export function useLeaveList() {
   return trpc.lists.leave.useMutation({
     onSuccess: () => utils.lists.list.invalidate(),
   })
+}
+
+export function useSetListDefaultView() {
+  const utils = trpc.useUtils()
+  const mutationKey = getMutationKey(trpc.lists.setDefaultView)
+  // The mutation cache outlives TasksPage, including when the user switches routes.
+  const isPending = useIsMutating({ mutationKey, exact: true }) > 0
+  const mutation = trpc.lists.setDefaultView.useMutation({
+    onMutate: async ({ listId, view }) => {
+      await utils.lists.list.cancel()
+      const previous = utils.lists.list.getData()
+      utils.lists.list.setData(undefined, rows => rows?.map(r => (r.id === listId ? { ...r, defaultView: view } : r)))
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) utils.lists.list.setData(undefined, context.previous)
+    },
+    onSettled: () => utils.lists.list.invalidate(),
+  })
+
+  function mutate(...args: Parameters<typeof mutation.mutate>) {
+    if (utils.lists.setDefaultView.isMutating() > 0) return
+    mutation.mutate(...args)
+  }
+
+  return { mutate, isPending }
 }
