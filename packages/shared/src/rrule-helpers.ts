@@ -29,3 +29,29 @@ export function describeRrule(rruleStr: string): string | null {
     return null
   }
 }
+
+/**
+ * Occurrence dates (YYYY-MM-DD) of a rule anchored at `anchor`, between `start` and
+ * `end` inclusive. Dates are computed in UTC at noon so the calendar day is stable.
+ * Returns [] for an invalid rule. Capped to avoid runaway expansion.
+ */
+export function occurrencesBetween(rruleStr: string, anchor: string, start: string, end: string, max = 64): string[] {
+  try {
+    const utcNoon = (iso: string) => {
+      const [y, m, d] = iso.split('-').map(Number)
+      return new Date(Date.UTC(y, m - 1, d, 12))
+    }
+    const rule = RRule.fromString(rruleStr)
+    const anchored = new RRule({ ...rule.origOptions, dtstart: utcNoon(anchor) })
+    const startD = new Date(utcNoon(start).getTime() - 12 * 3600000)
+    const endD = new Date(utcNoon(end).getTime() + 12 * 3600000 - 1)
+    const out: string[] = []
+    anchored.between(startD, endD, true, (date) => {
+      out.push(date.toISOString().slice(0, 10))
+      return out.length < max
+    })
+    return out
+  } catch {
+    return []
+  }
+}

@@ -1,4 +1,4 @@
-import { describeRrule } from '@tasks/shared'
+import { describeRrule, toLocalISODate, addDays } from '@tasks/shared'
 import type { DecryptedTask } from '../hooks/useTasks.js'
 
 type Props = {
@@ -9,8 +9,8 @@ type Props = {
 }
 
 function formatDueDate(due: string): string {
-  const today = new Date().toISOString().split('T')[0]
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+  const today = toLocalISODate(new Date())
+  const tomorrow = addDays(today, 1)
   if (due === today) return 'Today'
   if (due === tomorrow) return 'Tomorrow'
   return new Date(due + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -18,7 +18,7 @@ function formatDueDate(due: string): string {
 
 export function TaskRow({ task, onToggle, onClick, onDelete }: Props) {
   const isDone = task.status === 'done'
-  const isOverdue = !isDone && !!task.due_date && task.due_date < new Date().toISOString().split('T')[0]
+  const isOverdue = !isDone && !!task.due_date && task.due_date < toLocalISODate(new Date())
   return (
     <div className="task-row" onClick={() => onClick(task)}>
       <button

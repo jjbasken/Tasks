@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
+import { CalendarView } from '../components/calendar/CalendarView.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import type { TaskPayload } from '@tasks/shared'
-import { nextOccurrence } from '@tasks/shared'
+import { nextOccurrence, toLocalISODate, bucketForDueDate } from '@tasks/shared'
 import { resolveListKey } from '../lib/listKeys.js'
 
-type Tab = 'now' | 'later' | 'done'
+type Tab = 'now' | 'later' | 'done' | 'calendar'
 
 export function TasksPage() {
   const [tab, setTab] = useState<Tab>('now')
@@ -43,7 +44,7 @@ export function TasksPage() {
     if (!listKeyB64) return
     const in7Days = new Date()
     in7Days.setDate(in7Days.getDate() + 7)
-    const cutoff = in7Days.toISOString().split('T')[0]
+    const cutoff = toLocalISODate(in7Days)
     const toPromote = tasks.filter(t => t.status === 'active' && t.bucket === 'later' && !!t.due_date && t.due_date <= cutoff)
     toPromote.forEach(task => {
       updateTask.mutateAsync(task.id, { ...task, bucket: 'now' }, listKeyB64)
@@ -82,6 +83,12 @@ export function TasksPage() {
     }
   }
 
+  async function handleMove(task: DecryptedTask, date: string | null) {
+    if (!listKeyB64) return
+    const bucket = date ? bucketForDueDate(date, toLocalISODate(new Date())) : task.bucket
+    await updateTask.mutateAsync(task.id, { ...task, due_date: date, bucket }, listKeyB64)
+  }
+
   function handleDeleteTask(task: DecryptedTask) {
     if (!window.confirm(`Delete "${task.title}"?`)) return
     if (selectedTask?.id === task.id) setSelectedTask(null)
@@ -108,7 +115,7 @@ export function TasksPage() {
       <Sidebar activeListId={currentListId} onSelectList={setActiveListId} />
       <div className="main-content">
         <div className="main-header">
-          {(['now', 'later', 'done'] as Tab[]).map(t => (
+          {(['now', 'later', 'done', 'calendar'] as Tab[]).map(t => (
             <button
               key={t}
               className={`tab-btn${tab === t ? ' active' : ''}`}
@@ -143,12 +150,19 @@ export function TasksPage() {
             </>
           )}
         </div>
-        <div className="task-list-area">
-          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
-        </div>
+        {tab === 'calendar' ? (
+          <div className="task-list-area cal-area">
+            <CalendarView tasks={tasks} onToggle={handleToggle} onClickTask={setSelectedTask} onMove={handleMove} />
+          </div>
+        ) : (
+          <div className="task-list-area">
+            <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
+          </div>
+        )}
       </div>
       {(selectedTask || showCreate) && (
         <TaskDetail
+          key={selectedTask?.id ?? 'new'}
           task={selectedTask ?? null}
           listId={currentListId}
           listKeyB64={listKeyB64 ?? ''}

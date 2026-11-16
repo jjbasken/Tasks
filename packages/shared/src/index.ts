@@ -2,3 +2,4 @@
 export * from './types.js'
 export * from './crypto.js'
 export * from './rrule-helpers.js'
+export * from './calendar.js'
