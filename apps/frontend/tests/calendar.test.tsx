@@ -333,6 +333,23 @@ describe('calendar preferences on TasksPage', () => {
     }
   }
 
+  it('replaces an open new-task draft when More… is used again on the same day', async () => {
+    await withTasksPage('calendar', async ({ dom }) => {
+      const openWith = async (title: string) => {
+        await act(async () => document.querySelector<HTMLButtonElement>('.cal-add-btn')!.click())
+        const input = document.querySelector<HTMLInputElement>('.cal-quick-input')!
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, title)
+          input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+        })
+        await act(async () => document.querySelector<HTMLButtonElement>('.cal-quick-more')!.click())
+        return document.querySelector<HTMLInputElement>('.task-panel input.field-input')!.value
+      }
+      expect(await openWith('Dentist')).toBe('Dentist')
+      expect(await openWith('Haircut')).toBe('Haircut')
+    })
+  })
+
   it('keeps the calendar draft when the default refreshes to Now', async () => {
     await withTasksPage('calendar', async ({ dom, refreshDefault }) => {
       await act(async () => document.querySelector<HTMLButtonElement>('.cal-add-btn')!.click())

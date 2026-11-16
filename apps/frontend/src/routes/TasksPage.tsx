@@ -20,7 +20,8 @@ export function TasksPage() {
   const [tab, setTab] = useState<Tab>('now')
   const [selectedTask, setSelectedTask] = useState<DecryptedTask | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [createDefaults, setCreateDefaults] = useState<{ dueDate: string; title?: string } | null>(null)
+  // `seq` gives each "More…" its own editor instance, so a new title replaces an open draft for the same day.
+  const [createDefaults, setCreateDefaults] = useState<{ dueDate: string; title?: string; seq: number } | null>(null)
   const isOnline = useNetworkStatus()
   const setDefaultView = useSetListDefaultView()
   const { data: lists } = useListsList()
@@ -146,7 +147,7 @@ export function TasksPage() {
   function handleOpenAdd(date: string, title?: string) {
     setSelectedTask(null)
     setEditorListId(currentListId)
-    setCreateDefaults({ dueDate: date, title })
+    setCreateDefaults(prev => ({ dueDate: date, title, seq: (prev?.seq ?? 0) + 1 }))
     setShowCreate(true)
   }
 
@@ -247,7 +248,7 @@ export function TasksPage() {
       </div>
       {editorListId === currentListId && (selectedTask || showCreate) && (
         <TaskDetail
-          key={`${currentListId}:${selectedTask?.id ?? `new:${createDefaults?.dueDate ?? ''}`}`}
+          key={`${currentListId}:${selectedTask?.id ?? `new:${createDefaults ? `${createDefaults.dueDate}:${createDefaults.seq}` : ''}`}`}
           task={selectedTask ?? null}
           initialDueDate={selectedTask ? undefined : createDefaults?.dueDate}
           initialTitle={selectedTask ? undefined : createDefaults?.title}
