@@ -1,7 +1,7 @@
 import type { HTMLAttributes, Ref } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import type { Placed } from '@tasks/shared'
-import { describeRrule } from '@tasks/shared'
+import { describeRrule, isSubDailyRule } from '@tasks/shared'
 import type { DecryptedTask } from '../../hooks/useTasks.js'
 
 type Props = {
@@ -86,10 +86,15 @@ function ChipBody({ placed, onToggle, onClick, overlay, nodeRef, dragging, chipP
       >
         {task.title}
       </button>
-      {task.rrule && <span className="cal-chip-recur" title={describeRrule(task.rrule) ?? ''}>↻</span>}
+      {task.rrule && <span className="cal-chip-recur" title={recurTitle(task.rrule)}>↻</span>}
       {kind === 'overdue' && <span className="cal-chip-late">{daysLate}d late</span>}
     </div>
   )
+}
+
+function recurTitle(rrule: string): string {
+  const text = describeRrule(rrule) ?? ''
+  return isSubDailyRule(rrule) ? `${text} (shown as every matching day; tasks have no time)` : text
 }
 
 function stopEvent(e: { stopPropagation: () => void }) {

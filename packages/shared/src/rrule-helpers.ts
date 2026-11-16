@@ -44,19 +44,48 @@ function toUTCDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-function anchoredRule(rruleStr: string, anchor: string): RRule {
-  const rule = RRule.fromString(rruleStr)
-  return new RRule({ ...rule.origOptions, dtstart: utcNoon(anchor) })
+const SUB_DAILY = new Set([RRule.HOURLY, RRule.MINUTELY, RRule.SECONDLY])
+
+/** True for rules that repeat more often than daily (FREQ=HOURLY, MINUTELY, SECONDLY). */
+export function isSubDailyRule(rruleStr: string): boolean {
+  try {
+    return SUB_DAILY.has(RRule.fromString(rruleStr).origOptions.freq as number)
+  } catch {
+    return false
+  }
 }
 
 /**
- * The first occurrence date (YYYY-MM-DD) on a later calendar day than `after`, for a
- * rule anchored at `after`. Sub-daily rules (e.g. FREQ=HOURLY) advance to the next
- * day rather than repeating the same date. Returns null for an invalid or exhausted rule.
+ * Tasks carry a date but no time, so a rule that repeats within a day is treated as
+ * repeating on every day it matches: it becomes FREQ=DAILY with its date filters
+ * (BYDAY, BYMONTH, BYMONTHDAY, BYYEARDAY, BYWEEKNO) and UNTIL kept. Time-of-day parts
+ * (BYHOUR, BYMINUTE, BYSECOND), INTERVAL, COUNT and BYSETPOS describe positions within
+ * the day and are dropped. This keeps every rule's work proportional to days, not
+ * seconds, so previews are never cut short by iteration limits.
  */
-export function nextOccurrenceDate(rruleStr: string, after: string): string | null {
+function anchoredRule(rruleStr: string, anchor: string): RRule {
+  const opts = { ...RRule.fromString(rruleStr).origOptions, dtstart: utcNoon(anchor) }
+  if (SUB_DAILY.has(opts.freq as number)) {
+    opts.freq = RRule.DAILY
+    delete opts.interval
+    delete opts.count
+    delete opts.byhour
+    delete opts.byminute
+    delete opts.bysecond
+    delete opts.bysetpos
+  }
+  return new RRule(opts)
+}
+
+/**
+ * The first occurrence date (YYYY-MM-DD) after the calendar day `after`, for a rule
+ * anchored at `anchor` (the task's due date). `after` defaults to the anchor; pass a
+ * later date (today) to skip missed occurrences while keeping the rule's rhythm.
+ * Returns null for an invalid or exhausted rule.
+ */
+export function nextOccurrenceDate(rruleStr: string, anchor: string, after: string = anchor): string | null {
   try {
-    const rule = anchoredRule(rruleStr, after)
+    const rule = anchoredRule(rruleStr, anchor)
     // Start the search at the end of `after` so same-day occurrences are skipped.
     const next = rule.after(new Date(utcNoon(after).getTime() + 12 * 3600000 - 1), false)
     return next ? toUTCDate(next) : null
@@ -64,9 +93,6 @@ export function nextOccurrenceDate(rruleStr: string, after: string): string | nu
     return null
   }
 }
-
-/** Safety cap on raw rrule iterations, for very fine-grained rules like FREQ=MINUTELY. */
-const MAX_ITERATIONS = 10_000
 
 /**
  * Distinct occurrence dates (YYYY-MM-DD) of a rule anchored at `anchor`, between
@@ -78,11 +104,10 @@ export function occurrencesBetween(rruleStr: string, anchor: string, start: stri
     const startD = new Date(utcNoon(start).getTime() - 12 * 3600000)
     const endD = new Date(utcNoon(end).getTime() + 12 * 3600000 - 1)
     const out: string[] = []
-    let iterations = 0
     rule.between(startD, endD, true, (date) => {
       const iso = toUTCDate(date)
       if (out[out.length - 1] !== iso) out.push(iso)
-      return out.length < max && ++iterations < MAX_ITERATIONS
+      return out.length < max
     })
     return out
   } catch {

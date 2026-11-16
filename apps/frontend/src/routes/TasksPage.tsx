@@ -7,7 +7,7 @@ import { CalendarView } from '../components/calendar/CalendarView.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import type { TaskPayload } from '@tasks/shared'
-import { nextOccurrenceDate, toLocalISODate, bucketForDueDate } from '@tasks/shared'
+import { nextDueOnCompletion, toLocalISODate, bucketForDueDate } from '@tasks/shared'
 import { resolveListKey } from '../lib/listKeys.js'
 import { spawnedOccurrences } from '../lib/recurrence.js'
 
@@ -63,9 +63,9 @@ export function TasksPage() {
       const updated: TaskPayload = { ...task, status: isDone ? 'done' : 'active', completed_at: isDone ? new Date().toISOString() : null }
       await updateTask.mutateAsync(task.id, updated, listKeyB64)
       if (isDone && task.rrule) {
-        // Same date-only calculation as the calendar's recurrence previews.
+        // Skips missed occurrences, matching the first ghost the calendar previews.
         const today = toLocalISODate(new Date())
-        const next = nextOccurrenceDate(task.rrule, task.due_date ?? today)
+        const next = nextDueOnCompletion(task.rrule, task.due_date, today)
         if (next) {
           const bucket = bucketForDueDate(next, today)
           const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next, bucket }

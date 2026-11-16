@@ -1,5 +1,5 @@
 import type { TaskPayload } from './types.js'
-import { occurrencesBetween } from './rrule-helpers.js'
+import { nextOccurrenceDate, occurrencesBetween } from './rrule-helpers.js'
 
 /** Local calendar date as YYYY-MM-DD (not UTC, unlike toISOString). */
 export function toLocalISODate(d: Date): string {
@@ -113,4 +113,16 @@ export function placeTasks<T extends CalendarTask>(
 /** Bucket for a task due on `due`: within 7 days of today is 'now', otherwise 'later'. */
 export function bucketForDueDate(due: string, today: string): 'now' | 'later' {
   return daysBetween(today, due) > 7 ? 'later' : 'now'
+}
+
+/**
+ * Due date for the occurrence created when a recurring task is completed on `today`.
+ * Catch-up rule: missed occurrences are skipped. The next date is the first occurrence
+ * after the later of the due date and today, aligned to the rule anchored at the due
+ * date. An overdue task already sits on today's cell, so this is the first ghost the
+ * calendar previews after it. Undated tasks anchor at today.
+ */
+export function nextDueOnCompletion(rrule: string, dueDate: string | null, today: string): string | null {
+  const anchor = dueDate ?? today
+  return nextOccurrenceDate(rrule, anchor, anchor > today ? anchor : today)
 }
