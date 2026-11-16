@@ -7,7 +7,7 @@ import { CalendarView } from '../components/calendar/CalendarView.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import type { TaskPayload } from '@tasks/shared'
-import { nextDueOnCompletion, toLocalISODate, bucketForDueDate } from '@tasks/shared'
+import { nextDueOnCompletion, successorRule, toLocalISODate, bucketForDueDate } from '@tasks/shared'
 import { resolveListKey } from '../lib/listKeys.js'
 import { spawnedOccurrences } from '../lib/recurrence.js'
 
@@ -68,7 +68,9 @@ export function TasksPage() {
         const next = nextDueOnCompletion(task.rrule, task.due_date, today)
         if (next) {
           const bucket = bucketForDueDate(next, today)
-          const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next, bucket }
+          // Carry the series' end forward so a COUNT doesn't restart on every occurrence.
+          const rrule = successorRule(task.rrule, task.due_date ?? today)
+          const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule, status: 'active', completed_at: null, due_date: next, bucket }
           await createTask.mutateAsync(nextPayload, listKeyB64)
         }
       } else if (!isDone && task.rrule) {

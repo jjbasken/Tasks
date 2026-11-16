@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test'
-import { nextOccurrence, describeRrule, occurrencesBetween, nextOccurrenceDate, isSubDailyRule } from '../src/rrule-helpers.js'
+import { nextOccurrence, describeRrule, occurrencesBetween, nextOccurrenceDate, isSubDailyRule, successorRule } from '../src/rrule-helpers.js'
 import { placeTasks, nextDueOnCompletion } from '../src/calendar.js'
 
 describe('nextOccurrence', () => {
@@ -135,6 +135,69 @@ describe('sub-daily rules keep their end condition', () => {
     const rrule = 'FREQ=SECONDLY;BYHOUR=9;COUNT=20000'
     expect(occurrencesBetween(rrule, '2026-11-16', '2026-11-17', '2026-11-30')).toEqual([])
     expect(nextOccurrenceDate(rrule, '2026-11-16')).toBe('2026-11-17')
+  })
+})
+
+/**
+ * Complete a recurring task and each successor it creates on its due date, the way
+ * TasksPage.handleToggle does, and return every due date in the series.
+ */
+function completeSeries(rrule: string, due: string, limit = 40): { dues: string[]; rules: string[] } {
+  const dues = [due]
+  const rules = [rrule]
+  for (let i = 0; i < limit; i++) {
+    const next = nextDueOnCompletion(rrule, due, due)
+    if (!next) break
+    rrule = successorRule(rrule, due)
+    due = next
+    dues.push(due)
+    rules.push(rrule)
+  }
+  return { dues, rules }
+}
+
+function previewDates(rrule: string, due: string): string[] {
+  const { byDate } = placeTasks(
+    [{ id: 't', status: 'active', due_date: due, completed_at: null, rrule }],
+    due, '2027-03-31', due,
+  )
+  return [...byDate.entries()].filter(([, ps]) => ps.some(p => p.kind === 'ghost')).map(([d]) => d).sort()
+}
+
+describe('successive completions honor the series end', () => {
+  const cases: [string, string[]][] = [
+    ['FREQ=HOURLY;COUNT=1', ['2026-11-16']],
+    ['FREQ=HOURLY;COUNT=24', ['2026-11-16', '2026-11-17']],
+    ['FREQ=MINUTELY;COUNT=3000', ['2026-11-16', '2026-11-17', '2026-11-18']],
+    ['FREQ=HOURLY;BYHOUR=9;COUNT=3', ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19']],
+    ['FREQ=DAILY;COUNT=3', ['2026-11-16', '2026-11-17', '2026-11-18']],
+    ['FREQ=WEEKLY;BYDAY=MO,TH;COUNT=4', ['2026-11-16', '2026-11-19', '2026-11-23', '2026-11-26']],
+    ['FREQ=HOURLY;BYHOUR=9;COUNT=1;UNTIL=20261117T085959Z', ['2026-11-16']],
+    ['FREQ=HOURLY;BYHOUR=9;UNTIL=20261117T085959Z', ['2026-11-16']],
+    ['FREQ=HOURLY;BYHOUR=9;UNTIL=20261117T090000Z', ['2026-11-16', '2026-11-17']],
+  ]
+  for (const [rrule, expected] of cases) {
+    it(`${rrule} ends after ${expected.length} task(s), matching the first preview`, () => {
+      const { dues } = completeSeries(rrule, '2026-11-16')
+      expect(dues).toEqual(expected)
+      expect(previewDates(rrule, '2026-11-16')).toEqual(expected.slice(1))
+    })
+  }
+
+  it('saves the computed end on the successor instead of restarting COUNT', () => {
+    expect(successorRule('FREQ=HOURLY;COUNT=24', '2026-11-16')).toBe('FREQ=HOURLY;UNTIL=20261117T110000Z')
+    expect(successorRule('FREQ=DAILY;COUNT=3', '2026-11-16')).toBe('FREQ=DAILY;UNTIL=20261118T120000Z')
+    const { rules } = completeSeries('FREQ=DAILY;COUNT=3', '2026-11-16')
+    expect(rules.slice(1)).toEqual(['FREQ=DAILY;UNTIL=20261118T120000Z', 'FREQ=DAILY;UNTIL=20261118T120000Z'])
+  })
+  it('leaves rules without COUNT, and counts too large to walk, unchanged', () => {
+    expect(successorRule('FREQ=WEEKLY;BYDAY=MO', '2026-11-16')).toBe('FREQ=WEEKLY;BYDAY=MO')
+    expect(successorRule('FREQ=SECONDLY;BYHOUR=9;COUNT=20000', '2026-11-16')).toBe('FREQ=SECONDLY;BYHOUR=9;COUNT=20000')
+    expect(successorRule('NOPE', '2026-11-16')).toBe('NOPE')
+  })
+  it('an overdue task whose series already ended creates no successor', () => {
+    expect(nextDueOnCompletion('FREQ=DAILY;COUNT=3', '2026-11-10', '2026-11-16')).toBeNull()
+    expect(nextDueOnCompletion('FREQ=HOURLY;COUNT=24', '2026-11-10', '2026-11-16')).toBeNull()
   })
 })
 
