@@ -45,6 +45,7 @@ export function migrate(db: Db) {
   `)
   try { sqlite.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`) } catch {}
   try { sqlite.run(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`) } catch {}
+  try { sqlite.run(`ALTER TABLE list_memberships ADD COLUMN default_view TEXT`) } catch {}
   try {
     sqlite.run(`ALTER TABLE lists ADD COLUMN is_personal INTEGER NOT NULL DEFAULT 0`)
     // Backfill: each user's oldest owned list is their personal list. Runs only on the

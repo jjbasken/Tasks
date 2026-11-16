@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
 import { CalendarView } from '../components/calendar/CalendarView.js'
-import { useListsList } from '../hooks/useLists.js'
+import { useListsList, useSetListDefaultView } from '../hooks/useLists.js'
+import { useNetworkStatus } from '../hooks/useNetworkStatus.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import type { TaskPayload } from '@tasks/shared'
 import { nextDueOnCompletion, successorRule, toLocalISODate, bucketForDueDate } from '@tasks/shared'
@@ -19,6 +20,9 @@ export function TasksPage() {
   const [tab, setTab] = useState<Tab>('now')
   const [selectedTask, setSelectedTask] = useState<DecryptedTask | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [createDefaults, setCreateDefaults] = useState<{ dueDate: string; title?: string } | null>(null)
+  const isOnline = useNetworkStatus()
+  const setDefaultView = useSetListDefaultView()
   const { data: lists } = useListsList()
   const [searchParams] = useSearchParams()
   const [activeListId, setActiveListId] = useState<string | null>(() => searchParams.get('listId'))
@@ -29,6 +33,15 @@ export function TasksPage() {
   const activeStillExists = !!activeListId && !!lists?.some(l => l.id === activeListId)
   const currentListId = (activeStillExists ? activeListId : personalList?.id) ?? ''
   const currentList = lists?.find(l => l.id === currentListId)
+
+  // Open each list on its saved tab, once per switch, so a later refetch never
+  // yanks you off a tab you picked by hand.
+  const appliedViewFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!currentList || appliedViewFor.current === currentList.id) return
+    appliedViewFor.current = currentList.id
+    setTab(currentList.defaultView === 'calendar' ? 'calendar' : 'now')
+  }, [currentList?.id, currentList?.defaultView])
 
   const listKeyB64 = useMemo(() => {
     if (!currentList) return null
@@ -93,6 +106,7 @@ export function TasksPage() {
     setEditorListId(currentListId)
     setSelectedTask(task)
     setShowCreate(false)
+    setCreateDefaults(null)
   }
 
   async function handleMove(task: DecryptedTask, date: string | null) {
@@ -103,6 +117,32 @@ export function TasksPage() {
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Could not move task')
     }
+  }
+
+  async function handleQuickAdd(date: string, title: string) {
+    if (!listKeyB64) return
+    const bucket = bucketForDueDate(date, toLocalISODate(new Date()))
+    const payload: TaskPayload = { title, notes: null, rrule: null, status: 'active', completed_at: null, due_date: date, bucket }
+    try {
+      await createTask.mutateAsync(payload, listKeyB64)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not add task')
+    }
+  }
+
+  function handleOpenAdd(date: string, title?: string) {
+    setSelectedTask(null)
+    setEditorListId(currentListId)
+    setCreateDefaults({ dueDate: date, title })
+    setShowCreate(true)
+  }
+
+  function handleToggleDefault(next: boolean) {
+    if (!currentListId) return
+    setDefaultView.mutate(
+      { listId: currentListId, view: next ? 'calendar' : 'now' },
+      { onError: error => setActionError(error.message || 'Could not save default view') },
+    )
   }
 
   function handleDeleteTask(task: DecryptedTask) {
@@ -141,7 +181,7 @@ export function TasksPage() {
             </button>
           ))}
           {tab !== 'done' && (
-            <button className="add-task-btn" onClick={() => { setSelectedTask(null); setEditorListId(currentListId); setShowCreate(true) }}>
+            <button className="add-task-btn" onClick={() => { setSelectedTask(null); setCreateDefaults(null); setEditorListId(currentListId); setShowCreate(true) }}>
               + Add task
             </button>
           )}
@@ -169,7 +209,17 @@ export function TasksPage() {
         {actionError && <div className="form-error" role="alert">{actionError}</div>}
         {tab === 'calendar' ? (
           <div className="task-list-area cal-area">
-            <CalendarView tasks={tasks} onToggle={handleToggle} onClickTask={openTask} onMove={handleMove} />
+            <CalendarView
+              tasks={tasks}
+              onToggle={handleToggle}
+              onClickTask={openTask}
+              onMove={handleMove}
+              onQuickAdd={handleQuickAdd}
+              onOpenAdd={handleOpenAdd}
+              isDefault={currentList?.defaultView === 'calendar'}
+              onToggleDefault={currentList ? handleToggleDefault : undefined}
+              defaultDisabledReason={isOnline ? null : 'Go online to change the default view'}
+            />
           </div>
         ) : (
           <div className="task-list-area">
@@ -179,11 +229,13 @@ export function TasksPage() {
       </div>
       {editorListId === currentListId && (selectedTask || showCreate) && (
         <TaskDetail
-          key={`${currentListId}:${selectedTask?.id ?? 'new'}`}
+          key={`${currentListId}:${selectedTask?.id ?? `new:${createDefaults?.dueDate ?? ''}`}`}
           task={selectedTask ?? null}
+          initialDueDate={selectedTask ? undefined : createDefaults?.dueDate}
+          initialTitle={selectedTask ? undefined : createDefaults?.title}
           listId={currentListId}
           listKeyB64={listKeyB64 ?? ''}
-          onClose={() => { setSelectedTask(null); setShowCreate(false) }}
+          onClose={() => { setSelectedTask(null); setShowCreate(false); setCreateDefaults(null) }}
         />
       )}
     </div>

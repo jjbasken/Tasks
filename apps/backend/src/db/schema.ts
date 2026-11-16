@@ -31,6 +31,8 @@ export const listMemberships = sqliteTable('list_memberships', {
   encryptedListKey: text('encrypted_list_key').notNull(),
   invitedBy: text('invited_by').references(() => users.id),
   createdAt: integer('created_at').notNull(),
+  /** This member's own view preference for the list ('now' | 'calendar'); null means 'now'. */
+  defaultView: text('default_view'),
 }, table => ({
   // A user belongs to a list at most once. Enforced in the database so a racing
   // pair of invites cannot slip a second row past the check in the router.

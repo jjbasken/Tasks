@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import type { Placed } from '@tasks/shared'
 import { parseISODate } from '@tasks/shared'
@@ -16,13 +16,33 @@ type Props = {
   isDragging: boolean
   onToggle: (task: DecryptedTask) => void
   onClickTask: (task: DecryptedTask) => void
+  /** Create a task due on this date with just a title. */
+  onQuickAdd: (date: string, title: string) => void
+  /** Open the full new-task editor for this date, carrying any title typed so far. */
+  onOpenAdd: (date: string, title?: string) => void
 }
 
-export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekday, isDragging, onToggle, onClickTask }: Props) {
+export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekday, isDragging, onToggle, onClickTask, onQuickAdd, onOpenAdd }: Props) {
   const isPast = date < today
   const isToday = date === today
   const { setNodeRef, isOver } = useDroppable({ id: date, disabled: isPast })
   const [expanded, setExpanded] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  function closeAdd() { setAdding(false); setDraft('') }
+
+  function handleAddKey(e: KeyboardEvent<HTMLInputElement>) {
+    // Keep keys away from dnd-kit's keyboard sensor so typing never starts a drag.
+    e.stopPropagation()
+    if (e.key === 'Escape') { closeAdd(); return }
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const title = draft.trim()
+    if (!title) return
+    onQuickAdd(date, title)
+    setDraft('')
+  }
 
   const overdueCount = isToday ? items.filter(p => p.kind === 'overdue').length : 0
   const visible = limit && !expanded ? items.slice(0, limit) : items
@@ -46,6 +66,15 @@ export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekd
         {overdueCount > 0 && (
           <span className="cal-day-overdue" title={`${overdueCount} overdue`}>{overdueCount} overdue</span>
         )}
+        {!isPast && (
+          <button
+            type="button"
+            className="cal-add-btn"
+            aria-label={`Add task on ${d.toDateString()}`}
+            title="Add task"
+            onClick={() => setAdding(true)}
+          >+</button>
+        )}
       </div>
       <div className="cal-day-items">
         {visible.map(p => (
@@ -61,6 +90,31 @@ export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekd
         )}
         {expanded && limit && items.length > limit && (
           <button className="cal-more-btn" onClick={() => setExpanded(false)}>Show less</button>
+        )}
+        {adding && !isPast && (
+          <div className="cal-quick-add" onPointerDown={e => e.stopPropagation()}>
+            <input
+              className="cal-quick-input"
+              placeholder="New task…"
+              aria-label={`New task title for ${d.toDateString()}`}
+              value={draft}
+              autoFocus
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={handleAddKey}
+              onBlur={e => {
+                // Leaving for the "More…" button is handled by its click.
+                if (e.relatedTarget instanceof Element && e.relatedTarget.closest('.cal-quick-add')) return
+                if (!draft.trim()) closeAdd()
+              }}
+            />
+            <button
+              type="button"
+              className="cal-quick-more"
+              // Keep focus in the input so its blur can't close the form before this click lands.
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onOpenAdd(date, draft.trim() || undefined); closeAdd() }}
+            >More…</button>
+          </div>
         )}
       </div>
     </div>
