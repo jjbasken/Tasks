@@ -1,66 +1,86 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { trpc } from '../lib/trpc.js'
-import { offlineQueue } from '../lib/offlineQueue.js'
+import { useQueryClient } from '@tanstack/react-query'
+import { applyQueuedChanges, applyQueuedNoteChanges, isNoteMutation, offlineQueue } from '../lib/offlineQueue.js'
+import { session } from '../lib/session.js'
+import { drainQueue, sendQueuedMutation, sendQueuedNoteMutation } from '../lib/syncQueue.js'
+import { notesQueryKey, type NotesCache } from './useNotes.js'
+import { useAuth } from './useAuth.js'
+
+// One replay loop per tab, however many components ask for sync. Callers that
+// need the outbox drained (attachments, moves) await the run in progress.
+let syncing: Promise<void> | null = null
 
 export function useOfflineSync() {
+  const { isLoggedIn, unlockCount } = useAuth()
   const utils = trpc.useUtils()
-  const syncing = useRef(false)
-  const [pendingCount, setPendingCount] = useState(() => offlineQueue.count())
+  const queryClient = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+  const revision = useSyncExternalStore(offlineQueue.subscribe, offlineQueue.getRevision)
+  let pendingCount = 0
+  try { pendingCount = offlineQueue.count() } catch { /* sync reports the storage error */ }
 
-  async function sync() {
-    if (syncing.current || !navigator.onLine) return
-    const queue = offlineQueue.getAll()
-    if (queue.length === 0) return
+  const sync = useCallback((): Promise<void> => {
+    if (syncing) return syncing
+    const userId = session.getUserId()
+    const run = navigator.locks && userId
+      ? navigator.locks.request(`tasks:sync:${userId}`, () => replay())
+      : replay()
+    syncing = run.finally(() => { syncing = null })
+    return syncing
+  }, [isLoggedIn, utils, queryClient])
 
-    syncing.current = true
-    const affectedListIds = new Set<string>()
-
+  async function replay() {
+    const userId = session.getUserId()
+    if (!navigator.onLine || !userId || !isLoggedIn || !session.getToken()) return
+    setError(null)
+    const affected = new Set<string>()
+    const affectedNotes = new Set<string>()
     try {
-      for (const m of queue) {
-        if (!navigator.onLine) break
-        try {
-          if (m.type === 'create') {
-            await utils.client.tasks.create.mutate({ listId: m.listId, encryptedPayload: m.encryptedPayload })
-          } else if (m.type === 'update') {
-            await utils.client.tasks.update.mutate({ taskId: m.taskId, encryptedPayload: m.encryptedPayload })
-          } else if (m.type === 'delete') {
-            await utils.client.tasks.delete.mutate({ taskId: m.taskId })
-          } else if (m.type === 'clearDone') {
-            await utils.client.tasks.clearDone.mutate({ listId: m.listId, taskIds: m.taskIds })
+      await drainQueue({
+        next: () => offlineQueue.getAll(userId)[0],
+        canContinue: () => navigator.onLine && session.getUserId() === userId && !!session.getToken(),
+        send: mutation => isNoteMutation(mutation)
+          ? sendQueuedNoteMutation(utils.client, mutation)
+          : sendQueuedMutation(utils.client.tasks, mutation),
+        acknowledge: mutation => {
+          // Fold the acknowledged write into the cached server state first, so
+          // removing it from the outbox does not flash the previous version.
+          if (session.getUserId() === userId) {
+            if (isNoteMutation(mutation)) {
+              queryClient.setQueryData<NotesCache>(notesQueryKey(mutation.listId), cache => cache && { ...cache, ...applyQueuedNoteChanges(cache, mutation.listId, [mutation]) })
+            } else {
+              utils.tasks.list.setData({ listId: mutation.listId }, rows => applyQueuedChanges(rows ?? [], mutation.listId, [mutation]))
+            }
           }
-          offlineQueue.remove(m.id)
-          affectedListIds.add(m.listId)
-        } catch {
-          // If we're still online it's likely a conflict (e.g. task deleted elsewhere) — skip it
-          if (navigator.onLine) {
-            offlineQueue.remove(m.id)
-            affectedListIds.add(m.listId)
-          } else {
-            break
-          }
-        }
-      }
+          offlineQueue.remove(mutation.id, userId)
+          ;(isNoteMutation(mutation) ? affectedNotes : affected).add(mutation.listId)
+        },
+      })
+    } catch (err: any) {
+      setError(err?.data?.code === 'UNAUTHORIZED'
+        ? 'Unlock your account again to sync. Your changes are saved on this device.'
+        : 'Changes are saved on this device. Sync failed; retry when the connection or access is restored.')
     } finally {
-      syncing.current = false
-      setPendingCount(offlineQueue.count())
-    }
-
-    for (const listId of affectedListIds) {
-      utils.tasks.list.invalidate({ listId })
+      if (session.getUserId() === userId) {
+        affected.forEach(listId => { utils.tasks.list.invalidate({ listId }) })
+        affectedNotes.forEach(listId => { queryClient.invalidateQueries({ queryKey: notesQueryKey(listId) }) })
+      }
     }
   }
 
-  // Sync on reconnect
   useEffect(() => {
-    const handleOnline = () => sync()
-    window.addEventListener('online', handleOnline)
-    return () => window.removeEventListener('online', handleOnline)
-  }, [])
+    sync()
+    const retry = () => { sync() }
+    const resume = () => { if (document.visibilityState === 'visible') retry() }
+    window.addEventListener('online', retry)
+    window.addEventListener('pageshow', retry)
+    document.addEventListener('visibilitychange', resume)
+    const interval = window.setInterval(retry, 30_000)
+    return () => { window.removeEventListener('online', retry); window.removeEventListener('pageshow', retry); document.removeEventListener('visibilitychange', resume); window.clearInterval(interval) }
+  }, [sync])
+  // Signing in online after an offline unlock leaves isLoggedIn unchanged; sync now, not at the next retry.
+  useEffect(() => { if (pendingCount > 0) sync() }, [revision, isLoggedIn, unlockCount, sync])
 
-  // Sync on mount if there's a queue and we're online
-  useEffect(() => {
-    if (navigator.onLine && offlineQueue.count() > 0) sync()
-  }, [])
-
-  return { pendingCount, sync }
+  return { pendingCount, error, sync }
 }

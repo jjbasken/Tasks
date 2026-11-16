@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
@@ -7,12 +7,15 @@ import { CalendarView } from '../components/calendar/CalendarView.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import type { TaskPayload } from '@tasks/shared'
-import { nextOccurrence, toLocalISODate, bucketForDueDate } from '@tasks/shared'
+import { nextOccurrenceDate, toLocalISODate, bucketForDueDate } from '@tasks/shared'
 import { resolveListKey } from '../lib/listKeys.js'
+import { spawnedOccurrences } from '../lib/recurrence.js'
 
 type Tab = 'now' | 'later' | 'done' | 'calendar'
 
 export function TasksPage() {
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [editorListId, setEditorListId] = useState('')
   const [tab, setTab] = useState<Tab>('now')
   const [selectedTask, setSelectedTask] = useState<DecryptedTask | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -60,33 +63,44 @@ export function TasksPage() {
       const updated: TaskPayload = { ...task, status: isDone ? 'done' : 'active', completed_at: isDone ? new Date().toISOString() : null }
       await updateTask.mutateAsync(task.id, updated, listKeyB64)
       if (isDone && task.rrule) {
-        const anchor = task.due_date ? new Date(task.due_date + 'T12:00:00') : new Date()
-        const next = nextOccurrence(task.rrule, anchor)
+        // Same date-only calculation as the calendar's recurrence previews.
+        const today = toLocalISODate(new Date())
+        const next = nextOccurrenceDate(task.rrule, task.due_date ?? today)
         if (next) {
-          const in7Days = new Date()
-          in7Days.setDate(in7Days.getDate() + 7)
-          const bucket = next > in7Days ? 'later' : 'now'
-          const nextPayload: TaskPayload = { title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
+          const bucket = bucketForDueDate(next, today)
+          const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next, bucket }
           await createTask.mutateAsync(nextPayload, listKeyB64)
         }
       } else if (!isDone && task.rrule) {
         // Undoing a completed recurring task — delete the next occurrence that was spawned
-        const orphanIds = tasks
-          .filter(t => t.id !== task.id && t.status === 'active' && t.rrule === task.rrule && !!t.due_date && !!task.due_date && t.due_date > task.due_date)
-          .map(t => t.id)
+        const orphanIds = spawnedOccurrences(tasks, task.id)
         if (orphanIds.length > 0) {
           await clearDone.mutateAsync({ listId: currentListId, taskIds: orphanIds })
         }
       }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update task')
     } finally {
       setCompletingIds(prev => { const s = new Set(prev); s.delete(task.id); return s })
     }
   }
 
+  // Open the editor scoped to the list the task belongs to, so switching lists while
+  // it is open never saves against another list's key.
+  function openTask(task: DecryptedTask) {
+    setEditorListId(currentListId)
+    setSelectedTask(task)
+    setShowCreate(false)
+  }
+
   async function handleMove(task: DecryptedTask, date: string | null) {
     if (!listKeyB64) return
     const bucket = date ? bucketForDueDate(date, toLocalISODate(new Date())) : task.bucket
-    await updateTask.mutateAsync(task.id, { ...task, due_date: date, bucket }, listKeyB64)
+    try {
+      await updateTask.mutateAsync(task.id, { ...task, due_date: date, bucket }, listKeyB64)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not move task')
+    }
   }
 
   function handleDeleteTask(task: DecryptedTask) {
@@ -125,7 +139,7 @@ export function TasksPage() {
             </button>
           ))}
           {tab !== 'done' && (
-            <button className="add-task-btn" onClick={() => setShowCreate(true)}>
+            <button className="add-task-btn" onClick={() => { setSelectedTask(null); setEditorListId(currentListId); setShowCreate(true) }}>
               + Add task
             </button>
           )}
@@ -150,19 +164,20 @@ export function TasksPage() {
             </>
           )}
         </div>
+        {actionError && <div className="form-error" role="alert">{actionError}</div>}
         {tab === 'calendar' ? (
           <div className="task-list-area cal-area">
-            <CalendarView tasks={tasks} onToggle={handleToggle} onClickTask={setSelectedTask} onMove={handleMove} />
+            <CalendarView tasks={tasks} onToggle={handleToggle} onClickTask={openTask} onMove={handleMove} />
           </div>
         ) : (
           <div className="task-list-area">
-            <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={setSelectedTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
+            <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={openTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
           </div>
         )}
       </div>
-      {(selectedTask || showCreate) && (
+      {editorListId === currentListId && (selectedTask || showCreate) && (
         <TaskDetail
-          key={selectedTask?.id ?? 'new'}
+          key={`${currentListId}:${selectedTask?.id ?? 'new'}`}
           task={selectedTask ?? null}
           listId={currentListId}
           listKeyB64={listKeyB64 ?? ''}

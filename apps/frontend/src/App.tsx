@@ -9,6 +9,7 @@ import { ProtectedRoute } from './components/ProtectedRoute.js'
 import { LoginPage } from './routes/LoginPage.js'
 import { RegisterPage } from './routes/RegisterPage.js'
 import { TasksPage } from './routes/TasksPage.js'
+import { NotesPage } from './routes/NotesPage.js'
 import { ListsPage } from './routes/ListsPage.js'
 import { DevicesPage } from './routes/DevicesPage.js'
 import { SettingsPage } from './routes/SettingsPage.js'
@@ -34,6 +35,7 @@ export function App() {
               <Route path="/device-request" element={<RequestDevicePage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/notes" element={<NotesPage />} />
                 <Route path="/lists" element={<ListsPage />} />
                 <Route path="/devices" element={<DevicesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

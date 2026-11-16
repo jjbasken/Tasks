@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { trpc } from '../lib/trpc.js'
 import { session } from '../lib/session.js'
 import { encryptSymmetric, generateListKey, fromBase64, sealToPublicKey, decryptSymmetric, publicKeyFingerprint } from '@tasks/shared'
+import { encryptListName } from '../lib/listCrypto.js'
 import { Sidebar } from '../components/Sidebar.js'
 import { useListsList, type DecryptedList } from '../hooks/useLists.js'
 import { useNetworkStatus } from '../hooks/useNetworkStatus.js'
@@ -40,9 +41,9 @@ export function ListsPage() {
     const stretchKey = session.getStretchKey()
     if (!stretchKey) return
     const listKey = generateListKey()
-    const encName = encryptSymmetric(newListName, fromBase64(listKey))
+    const encName = encryptListName(newListName, listKey)
     const encKey = encryptSymmetric(listKey, stretchKey)
-    await createList.mutateAsync({ encryptedName: JSON.stringify(encName), encryptedListKey: JSON.stringify(encKey) })
+    await createList.mutateAsync({ encryptedName: encName, encryptedListKey: JSON.stringify(encKey) })
     setNewListName('')
   }
 
@@ -99,6 +100,7 @@ export function ListsPage() {
         return
       }
       const listKeyB64 = decryptSymmetric(JSON.parse(list.encryptedListKey), stretchKey)
+      await utils.client.lists.rename.mutate({ listId: list.id, encryptedName: encryptListName(list.name, listKeyB64) })
       const sealedKey = sealToPublicKey(fromBase64(listKeyB64), inviteCandidate.publicKey)
       await inviteMutation.mutateAsync({ listId: inviteListId, inviteeUsername: inviteCandidate.username, encryptedListKey: sealedKey })
       closeInvite()

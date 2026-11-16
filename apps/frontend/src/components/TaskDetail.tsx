@@ -7,6 +7,8 @@ type Task = TaskPayload & { id: string }
 type Props = { task: Task | null; listId: string; listKeyB64: string; onClose: () => void }
 
 export function TaskDetail({ task, listId, listKeyB64, onClose }: Props) {
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [title, setTitle] = useState(task?.title ?? '')
   const [notes, setNotes] = useState(task?.notes ?? '')
   const [bucket, setBucket] = useState<'now' | 'later'>(task?.bucket ?? 'now')
@@ -18,13 +20,22 @@ export function TaskDetail({ task, listId, listKeyB64, onClose }: Props) {
   const deleteTask = useDeleteTask(listId)
 
   async function handleSave() {
-    const payload: TaskPayload = { title, notes: notes || null, bucket, status: task?.status ?? 'active', rrule, due_date: dueDate || null, completed_at: task?.completed_at ?? null }
-    if (task) {
-      await updateTask.mutateAsync(task.id, payload, listKeyB64)
-    } else {
-      await createTask.mutateAsync(payload, listKeyB64)
+    if (saving || !listKeyB64 || !title.trim()) return
+    setSaving(true)
+    setError(null)
+    const payload: TaskPayload = { spawned_by: task?.spawned_by, title, notes: notes || null, bucket, status: task?.status ?? 'active', rrule, due_date: dueDate || null, completed_at: task?.completed_at ?? null }
+    try {
+      if (task) {
+        await updateTask.mutateAsync(task.id, payload, listKeyB64)
+      } else {
+        await createTask.mutateAsync(payload, listKeyB64)
+      }
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save task')
+    } finally {
+      setSaving(false)
     }
-    onClose()
   }
 
   function handleDelete() {
@@ -62,8 +73,9 @@ export function TaskDetail({ task, listId, listKeyB64, onClose }: Props) {
         </div>
         <RecurrencePicker value={rrule} onChange={setRrule} />
       </div>
+      {error && <div className="form-error" role="alert">{error}</div>}
       <div className="task-panel-footer">
-        <button className="panel-save-btn" onClick={handleSave}>Save</button>
+        <button className="panel-save-btn" onClick={handleSave} disabled={saving || !listKeyB64 || !title.trim()}>{saving ? 'Saving…' : 'Save'}</button>
         {task && <button className="panel-delete-btn" onClick={handleDelete}>Delete</button>}
       </div>
     </div>

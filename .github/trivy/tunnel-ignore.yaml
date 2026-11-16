@@ -1,0 +1,3 @@
+# cloudflared 2026.10.4 fixes the previously accepted upstream CVEs.
+# Keep the tunnel scan's configured ignore file, with no accepted vulnerabilities.
+vulnerabilities: []

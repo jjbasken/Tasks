@@ -1,0 +1,67 @@
+{
+  "version": "004",
+  "items": [
+    {
+      "uuid": "11111111-1111-4111-8111-111111111111",
+      "content_type": "Note",
+      "created_at": "2023-02-01T10:00:00.000Z",
+      "updated_at": "2023-03-01T10:00:00.000Z",
+      "content": {
+        "title": "Plain note",
+        "text": "Hello\n- [ ] task",
+        "references": [],
+        "noteType": "markdown",
+        "appData": { "org.standardnotes.sn": { "client_updated_at": "2023-03-02T10:00:00.000Z", "pinned": true } }
+      }
+    },
+    {
+      "uuid": "22222222-2222-4222-8222-222222222222",
+      "content_type": "Note",
+      "created_at": "2023-02-02T10:00:00.000Z",
+      "updated_at": "2023-02-03T10:00:00.000Z",
+      "content": {
+        "title": "Super note",
+        "noteType": "super",
+        "trashed": true,
+        "protected": true,
+        "locked": true,
+        "references": [],
+        "text": "{\"root\":{\"children\":[{\"children\":[{\"text\":\"Heading\",\"type\":\"text\",\"format\":0}],\"type\":\"heading\",\"tag\":\"h2\"},{\"children\":[{\"text\":\"bold\",\"type\":\"text\",\"format\":1},{\"text\":\" and \",\"type\":\"text\",\"format\":0},{\"children\":[{\"text\":\"link\",\"type\":\"text\",\"format\":0}],\"type\":\"link\",\"url\":\"https://example.com\"}],\"type\":\"paragraph\"},{\"children\":[{\"children\":[{\"text\":\"done\",\"type\":\"text\",\"format\":0}],\"type\":\"listitem\",\"checked\":true},{\"children\":[{\"text\":\"todo\",\"type\":\"text\",\"format\":0}],\"type\":\"listitem\",\"checked\":false}],\"type\":\"list\",\"listType\":\"check\"},{\"children\":[{\"text\":\"let x = 1\",\"type\":\"code-highlight\"}],\"type\":\"code\",\"language\":\"js\"}],\"type\":\"root\"}}"
+      }
+    },
+    {
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "content_type": "Tag",
+      "created_at": "2023-01-01T10:00:00.000Z",
+      "updated_at": "2023-01-01T10:00:00.000Z",
+      "content": {
+        "title": "work",
+        "references": [{ "uuid": "11111111-1111-4111-8111-111111111111", "content_type": "Note" }]
+      }
+    },
+    {
+      "uuid": "44444444-4444-4444-8444-444444444444",
+      "content_type": "Tag",
+      "created_at": "2023-01-01T10:00:00.000Z",
+      "updated_at": "2023-01-01T10:00:00.000Z",
+      "content": {
+        "title": "projects",
+        "references": [
+          { "uuid": "33333333-3333-4333-8333-333333333333", "content_type": "Tag", "reference_type": "TagToParentTag" },
+          { "uuid": "11111111-1111-4111-8111-111111111111", "content_type": "Note" }
+        ]
+      }
+    },
+    {
+      "uuid": "55555555-5555-4555-8555-555555555555",
+      "content_type": "SN|Component",
+      "content": { "name": "Some editor" }
+    },
+    {
+      "uuid": "66666666-6666-4666-8666-666666666666",
+      "content_type": "Note",
+      "deleted": true,
+      "content": { "title": "gone" }
+    }
+  ]
+}

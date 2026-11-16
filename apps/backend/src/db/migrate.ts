@@ -95,4 +95,73 @@ export function migrate(db: Db) {
       approved_at INTEGER
     )
   `)
+  sqlite.run(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL REFERENCES lists(id),
+      encrypted_payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `)
+  sqlite.run(`CREATE INDEX IF NOT EXISTS notes_list_updated_idx ON notes (list_id, updated_at)`)
+  sqlite.run(`
+    CREATE TABLE IF NOT EXISTS note_tags (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL REFERENCES lists(id),
+      encrypted_payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `)
+  sqlite.run(`CREATE INDEX IF NOT EXISTS note_tags_list_updated_idx ON note_tags (list_id, updated_at)`)
+  sqlite.run(`
+    CREATE TABLE IF NOT EXISTS note_revisions (
+      id TEXT PRIMARY KEY,
+      note_id TEXT NOT NULL REFERENCES notes(id),
+      list_id TEXT NOT NULL REFERENCES lists(id),
+      encrypted_payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `)
+  sqlite.run(`CREATE INDEX IF NOT EXISTS note_revisions_note_created_idx ON note_revisions (note_id, created_at)`)
+  sqlite.run(`
+    CREATE TABLE IF NOT EXISTS sync_tombstones (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL REFERENCES lists(id),
+      kind TEXT NOT NULL,
+      deleted_at INTEGER NOT NULL
+    )
+  `)
+  // Upgrade the initial notes schema without losing existing deletion records.
+  const tombstoneColumns = sqlite.query('PRAGMA table_info(sync_tombstones)').all() as { name: string; pk: number }[]
+  if (tombstoneColumns.filter(c => c.pk > 0).length === 1) {
+    sqlite.transaction(() => {
+      sqlite.run(`ALTER TABLE sync_tombstones RENAME TO sync_tombstones_old`)
+      sqlite.run(`CREATE TABLE sync_tombstones (
+        id TEXT NOT NULL,
+        list_id TEXT NOT NULL REFERENCES lists(id),
+        kind TEXT NOT NULL,
+        deleted_at INTEGER NOT NULL,
+        PRIMARY KEY (list_id, kind, id)
+      )`)
+      sqlite.run(`INSERT INTO sync_tombstones SELECT id, list_id, kind, deleted_at FROM sync_tombstones_old`)
+      sqlite.run(`DROP TABLE sync_tombstones_old`)
+    })()
+  }
+  sqlite.run(`CREATE INDEX IF NOT EXISTS sync_tombstones_list_deleted_idx ON sync_tombstones (list_id, deleted_at)`)
+  sqlite.run(`
+    CREATE TABLE IF NOT EXISTS files (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL REFERENCES lists(id),
+      note_id TEXT NOT NULL,
+      uploader_id TEXT NOT NULL REFERENCES users(id),
+      size INTEGER NOT NULL,
+      encrypted_metadata TEXT NOT NULL,
+      uploaded INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `)
+  sqlite.run(`CREATE INDEX IF NOT EXISTS files_note_idx ON files (note_id)`)
+  sqlite.run(`CREATE INDEX IF NOT EXISTS files_list_idx ON files (list_id)`)
 }

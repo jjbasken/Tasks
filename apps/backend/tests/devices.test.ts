@@ -220,3 +220,31 @@ describe('devices.requestApproval — account enumeration', () => {
     expect(await caller.devices.checkApproval(unknown)).toBeNull()
   })
 })
+
+describe('expired pairing requests', () => {
+  it('reclaims all expired slots before accepting another request', async () => {
+    const db = makeTestDb()
+    const userId = await seedUser(db)
+    const anonymous = createCaller({ db, userId: null })
+    for (let i = 0; i < 5; i++) {
+      await anonymous.devices.requestApproval({ username: 'u', name: 'old', devicePublicKey: 'pk' })
+    }
+    await db.update(devices).set({ createdAt: Date.now() - 11 * 60 * 1000 })
+    expect(await createCaller({ db, userId }).devices.listPending()).toHaveLength(0)
+    await anonymous.devices.requestApproval({ username: 'u', name: 'new', devicePublicKey: 'pk' })
+    expect(await createCaller({ db, userId }).devices.listPending()).toHaveLength(1)
+    expect(await db.select().from(devices)).toHaveLength(1)
+  })
+})
+
+it('allows only one concurrent poll to consume an approval handle', async () => {
+  const db = makeTestDb()
+  const userId = await seedUser(db)
+  const anonymous = createCaller({ db, userId: null })
+  const handle = await anonymous.devices.requestApproval({ username: 'u', name: 'test', devicePublicKey: 'pk' })
+  await createCaller({ db, userId }).devices.approve({ deviceId: handle.deviceId, verificationCode: await deviceVerificationCode('pk'), sealedUserPrivateKey: 'sealed' })
+  const results = await Promise.all([
+    anonymous.devices.checkApproval(handle), anonymous.devices.checkApproval(handle),
+  ])
+  expect(results.filter(Boolean)).toHaveLength(1)
+})

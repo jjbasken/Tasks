@@ -90,7 +90,7 @@ export function generateListKey(): string {
   return toBase64(sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES))
 }
 
-/** Encrypt a UTF-8 string with XChaCha20-Poly1305 (libsodium SecretBox). */
+/** Encrypt a UTF-8 string with XSalsa20-Poly1305 (libsodium SecretBox). */
 export function encryptSymmetric(plaintext: string, key: Uint8Array): EncryptedBlob {
   const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES)
   const ciphertext = sodium.crypto_secretbox_easy(sodium.from_string(plaintext), nonce, key)
@@ -126,4 +126,36 @@ export function openSeal(
     fromBase64(publicKeyB64),
     fromBase64(privateKeyB64),
   )
+}
+
+/** Generate a random 32-byte key for one attachment, returned as base64. */
+export function generateFileKey(): string {
+  return toBase64(sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES))
+}
+
+/** Encrypt raw bytes with SecretBox. Output is nonce ‖ ciphertext. */
+export function encryptBytes(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES)
+  const ciphertext = sodium.crypto_secretbox_easy(data, nonce, key)
+  const out = new Uint8Array(nonce.length + ciphertext.length)
+  out.set(nonce)
+  out.set(ciphertext, nonce.length)
+  return out
+}
+
+/** Decrypt the output of encryptBytes. Throws if authentication fails. */
+export function decryptBytes(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const n = sodium.crypto_secretbox_NONCEBYTES
+  if (data.length < n + sodium.crypto_secretbox_MACBYTES) throw new Error('Ciphertext too short')
+  return sodium.crypto_secretbox_open_easy(data.subarray(n), data.subarray(0, n), key)
+}
+
+/** Ciphertext length produced by encryptBytes for a plaintext of `size` bytes. */
+export function encryptedSize(size: number): number {
+  return size + sodium.crypto_secretbox_NONCEBYTES + sodium.crypto_secretbox_MACBYTES
+}
+
+/** Constant-time comparison of two equal-length secrets. */
+export function secretsEqual(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && sodium.memcmp(a, b)
 }

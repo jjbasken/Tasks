@@ -204,3 +204,18 @@ describe('lists.removeMember', () => {
     expect(await bobCaller.lists.list()).toHaveLength(0)
   })
 })
+
+describe('list name migration', () => {
+  it('allows only the owner to replace the encrypted name', async () => {
+    const db = makeTestDb()
+    const ownerId = await seedUser(db, 'owner')
+    const memberId = await seedUser(db, 'member')
+    const owner = createCaller({ db, userId: ownerId })
+    const member = createCaller({ db, userId: memberId })
+    const { id } = await owner.lists.create({ encryptedName: 'old-name', encryptedListKey: 'owner-key' })
+    await owner.lists.invite({ listId: id, inviteeUsername: 'member', encryptedListKey: 'member-key' })
+    await expect(member.lists.rename({ listId: id, encryptedName: 'attacker-name' })).rejects.toThrow()
+    await owner.lists.rename({ listId: id, encryptedName: 'list-key-encrypted-name' })
+    expect((await member.lists.list())[0].encryptedName).toBe('list-key-encrypted-name')
+  })
+})

@@ -283,3 +283,24 @@ describe('auth.login — account enumeration', () => {
     expect(await codeOf('nobody-at-all')).toBe(await codeOf('grace'))
   })
 })
+
+describe('bootstrap concurrency', () => {
+  it('allows exactly one anonymous registration even when both request admin', async () => {
+    const ctx = makeCtx()
+    const caller = createCaller(ctx)
+    const payload = (username: string) => ({
+      username, email: `${username}@example.com`, passwordHash: 'pw', publicKey: 'pk',
+      kdfSalt: 'salt', encryptedPrivateKey: '{}', encryptedPersonalListKey: '{}',
+      encryptedPersonalListName: '{}', isAdmin: true,
+    })
+    const results = await Promise.allSettled([
+      caller.auth.register(payload('first')), caller.auth.register(payload('racer')),
+    ])
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    const { users, lists, listMemberships } = await import('../src/db/schema.js')
+    expect(await ctx.db.select().from(users)).toHaveLength(1)
+    expect((await ctx.db.select().from(users))[0].isAdmin).toBe(true)
+    expect(await ctx.db.select().from(lists)).toHaveLength(1)
+    expect(await ctx.db.select().from(listMemberships)).toHaveLength(1)
+  })
+})

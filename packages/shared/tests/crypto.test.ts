@@ -136,3 +136,27 @@ describe('publicKeyFingerprint', () => {
     expect(await publicKeyFingerprint(generateKeypair().publicKey)).toMatch(/^([0-9a-f]{4} ){4}[0-9a-f]{4}$/)
   })
 })
+
+describe('encryptBytes / decryptBytes', () => {
+  it('round-trips and rejects tampering or the wrong key', async () => {
+    const { generateFileKey, encryptBytes, decryptBytes, encryptedSize } = await import('../src/crypto.js')
+    const key = fromBase64(generateFileKey())
+    const data = new Uint8Array([1, 2, 3, 250])
+    const sealed = encryptBytes(data, key)
+    expect(sealed.length).toBe(encryptedSize(data.length))
+    expect(decryptBytes(sealed, key)).toEqual(data)
+    const tampered = new Uint8Array(sealed)
+    tampered[tampered.length - 1] ^= 1
+    expect(() => decryptBytes(tampered, key)).toThrow()
+    expect(() => decryptBytes(sealed, fromBase64(generateFileKey()))).toThrow()
+  })
+})
+
+describe('secretsEqual', () => {
+  it('compares in constant time', async () => {
+    const { secretsEqual } = await import('../src/crypto.js')
+    expect(secretsEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(true)
+    expect(secretsEqual(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(false)
+    expect(secretsEqual(new Uint8Array([1]), new Uint8Array([1, 3]))).toBe(false)
+  })
+})

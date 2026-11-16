@@ -15,3 +15,8 @@ export const queryClient = new QueryClient({
     },
   },
 })
+
+// Keep visited encrypted data in the snapshot even after its screen unmounts.
+queryClient.setQueryDefaults([['lists', 'list']], { gcTime: Infinity })
+queryClient.setQueryDefaults([['tasks', 'list']], { gcTime: Infinity })
+queryClient.setQueryDefaults(['notes'], { gcTime: Infinity })

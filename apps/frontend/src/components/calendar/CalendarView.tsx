@@ -30,11 +30,13 @@ function initialMode(): Mode {
   return window.matchMedia?.('(max-width: 768px)').matches ? 'week' : 'month'
 }
 
-/** Pointer position wins (precise on a dense grid); fall back to overlap for keyboard drags. */
-const collision: CollisionDetection = args => {
-  const hits = pointerWithin(args)
-  return hits.length > 0 ? hits : rectIntersection(args)
-}
+/**
+ * Mouse and touch drags drop only where the pointer is: releasing outside every target
+ * is a no-op, even if the dragged chip still overlaps a neighbouring day or the tray.
+ * Keyboard drags have no pointer, so they fall back to rectangle overlap.
+ */
+export const collision: CollisionDetection = args =>
+  args.pointerCoordinates ? pointerWithin(args) : rectIntersection(args)
 
 function useToday(): string {
   const [today, setToday] = useState(() => toLocalISODate(new Date()))

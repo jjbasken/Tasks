@@ -29,3 +29,32 @@ export const MAX_TASK_PAYLOAD = 64 * 1024
 
 /** Task ids accepted in one clearDone call. */
 export const MAX_TASK_IDS = 1000
+
+/** Encrypted note payload: title, Markdown body, flags. 2 MiB of ciphertext. */
+export const MAX_NOTE_PAYLOAD = 2 * 1024 * 1024
+
+/** Encrypted tag payload: a short title and a parent id. */
+export const MAX_TAG_PAYLOAD = 4096
+
+/** Encrypted attachment metadata: name, MIME type, size, wrapped per-file key. */
+export const MAX_FILE_METADATA = 8192
+
+/** Notes or tags accepted in one import batch. */
+export const MAX_IMPORT_BATCH = 100
+
+/** Revisions kept per note; older ones are pruned as new snapshots land. */
+export const MAX_REVISIONS_PER_NOTE = 100
+
+/** Minimum gap between revision snapshots of one note, so typing does not flood history. */
+export const REVISION_INTERVAL_MS = 10 * 60 * 1000
+
+function envBytes(name: string, fallback: number) {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** Largest single attachment, in bytes of ciphertext. */
+export const MAX_FILE_BYTES = envBytes('MAX_FILE_BYTES', 50 * 1024 * 1024)
+
+/** Total attachment bytes one user may upload across all lists. */
+export const FILES_QUOTA_BYTES = envBytes('FILES_QUOTA_BYTES', 2 * 1024 * 1024 * 1024)

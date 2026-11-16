@@ -1,30 +1,40 @@
-const CACHE = 'tasks-v1'
+// Replaced by the production build with a content fingerprint and every asset.
+const CACHE = 'tasks-shell-__BUILD_ID__'
+const PRECACHE = /* __PRECACHE__ */ ['/index.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png']
 
-self.addEventListener('install', () => self.skipWaiting())
-
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  )
+self.addEventListener('install', event => {
+  // Installation is atomic: a failed download leaves the previous worker active.
+  // An update waits until existing windows close or the user accepts it, so an
+  // open editor keeps the matching HTML, scripts and styles for its version.
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(
+    PRECACHE.map(url => new Request(url, { cache: 'reload' }))
+  )))
 })
 
-self.addEventListener('fetch', e => {
-  // Skip non-GET and API requests — always go to network
-  if (e.request.method !== 'GET') return
-  if (new URL(e.request.url).pathname.startsWith('/api/')) return
+self.addEventListener('message', event => {
+  // Only this app's own pages may activate a waiting update.
+  if (event.origin !== self.location.origin) return
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
+})
 
-  e.respondWith(
-    caches.open(CACHE).then(cache =>
-      cache.match(e.request).then(cached => {
-        const network = fetch(e.request).then(res => {
-          if (res.ok) cache.put(e.request, res.clone())
-          return res
-        })
-        // Serve cached immediately, refresh in background
-        return cached || network
-      })
-    )
-  )
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys()
+    await Promise.all(keys.filter(key => (key.startsWith('tasks-shell-') || key === 'tasks-v1') && key !== CACHE).map(key => caches.delete(key)))
+    await self.clients.claim()
+  })())
+})
+
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url)
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname === '/api' || url.pathname.startsWith('/api/')) return
+  // All SPA routes, including links never opened before, share the cached shell.
+  // Only build-listed files are served from this cache; API data is handled by
+  // the app's encrypted account cache, never by the worker.
+  const path = event.request.mode === 'navigate' ? '/index.html' : url.pathname
+  if (!PRECACHE.includes(path)) return
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE)
+    return await cache.match(path) || fetch(event.request)
+  })())
 })
