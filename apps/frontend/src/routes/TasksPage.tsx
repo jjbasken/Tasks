@@ -34,14 +34,25 @@ export function TasksPage() {
   const currentListId = (activeStillExists ? activeListId : personalList?.id) ?? ''
   const currentList = lists?.find(l => l.id === currentListId)
 
-  // Open each list on its saved tab, once per switch, so a later refetch never
-  // yanks you off a tab you picked by hand.
-  const appliedViewFor = useRef<string | null>(null)
+  // Open each list on its saved tab. Until you pick a tab yourself during this visit,
+  // a refreshed preference (e.g. saved on another device, replacing a stale cached
+  // one) still applies; after that, refetches never move you.
+  const visitListId = useRef<string | null>(null)
+  const pickedTabFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!currentList || appliedViewFor.current === currentList.id) return
-    appliedViewFor.current = currentList.id
+    if (!currentList) return
+    if (visitListId.current !== currentList.id) {
+      visitListId.current = currentList.id
+      pickedTabFor.current = null
+    }
+    if (pickedTabFor.current === currentList.id) return
     setTab(currentList.defaultView === 'calendar' ? 'calendar' : 'now')
   }, [currentList?.id, currentList?.defaultView])
+
+  function pickTab(t: Tab) {
+    pickedTabFor.current = currentListId
+    setTab(t)
+  }
 
   const listKeyB64 = useMemo(() => {
     if (!currentList) return null
@@ -119,14 +130,17 @@ export function TasksPage() {
     }
   }
 
-  async function handleQuickAdd(date: string, title: string) {
-    if (!listKeyB64) return
+  /** Resolves true once the task is in the local queue, so the quick-add box can keep a failed title. */
+  async function handleQuickAdd(date: string, title: string): Promise<boolean> {
+    if (!listKeyB64) return false
     const bucket = bucketForDueDate(date, toLocalISODate(new Date()))
     const payload: TaskPayload = { title, notes: null, rrule: null, status: 'active', completed_at: null, due_date: date, bucket }
     try {
       await createTask.mutateAsync(payload, listKeyB64)
+      return true
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Could not add task')
+      return false
     }
   }
 
@@ -138,7 +152,9 @@ export function TasksPage() {
   }
 
   function handleToggleDefault(next: boolean) {
-    if (!currentListId) return
+    if (!currentListId || setDefaultView.isPending) return
+    // Changing the default is a deliberate choice of where you are; don't jump tabs.
+    pickedTabFor.current = currentListId
     setDefaultView.mutate(
       { listId: currentListId, view: next ? 'calendar' : 'now' },
       { onError: error => setActionError(error.message || 'Could not save default view') },
@@ -175,7 +191,7 @@ export function TasksPage() {
             <button
               key={t}
               className={`tab-btn${tab === t ? ' active' : ''}`}
-              onClick={() => setTab(t)}
+              onClick={() => pickTab(t)}
             >
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
@@ -210,6 +226,8 @@ export function TasksPage() {
         {tab === 'calendar' ? (
           <div className="task-list-area cal-area">
             <CalendarView
+              // Remount per list so an unsent quick-add draft can't be submitted to another list.
+              key={currentListId}
               tasks={tasks}
               onToggle={handleToggle}
               onClickTask={openTask}
@@ -218,7 +236,7 @@ export function TasksPage() {
               onOpenAdd={handleOpenAdd}
               isDefault={currentList?.defaultView === 'calendar'}
               onToggleDefault={currentList ? handleToggleDefault : undefined}
-              defaultDisabledReason={isOnline ? null : 'Go online to change the default view'}
+              defaultDisabledReason={!isOnline ? 'Go online to change the default view' : setDefaultView.isPending ? 'Saving…' : null}
             />
           </div>
         ) : (

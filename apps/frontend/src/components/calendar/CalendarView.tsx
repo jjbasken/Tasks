@@ -17,12 +17,12 @@ type Props = {
   onClickTask: (task: DecryptedTask) => void
   /** Move a task to a date (YYYY-MM-DD), or null to clear its due date. */
   onMove: (task: DecryptedTask, date: string | null) => void
-  onQuickAdd: (date: string, title: string) => void
+  onQuickAdd: (date: string, title: string) => boolean | Promise<boolean>
   onOpenAdd: (date: string, title?: string) => void
   /** Whether this list opens in Calendar by default; the toggle is hidden when omitted. */
   isDefault?: boolean
   onToggleDefault?: (next: boolean) => void
-  /** Why the default toggle is unavailable (e.g. offline); disables it when set. */
+  /** Why the default toggle is unavailable (offline, or a save in flight); disables it when set. */
   defaultDisabledReason?: string | null
 }
 

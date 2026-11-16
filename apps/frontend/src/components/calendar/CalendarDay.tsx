@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import type { Placed } from '@tasks/shared'
 import { parseISODate } from '@tasks/shared'
@@ -16,8 +16,8 @@ type Props = {
   isDragging: boolean
   onToggle: (task: DecryptedTask) => void
   onClickTask: (task: DecryptedTask) => void
-  /** Create a task due on this date with just a title. */
-  onQuickAdd: (date: string, title: string) => void
+  /** Create a task due on this date with just a title; resolves false if it was not saved. */
+  onQuickAdd: (date: string, title: string) => boolean | Promise<boolean>
   /** Open the full new-task editor for this date, carrying any title typed so far. */
   onOpenAdd: (date: string, title?: string) => void
 }
@@ -29,19 +29,29 @@ export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekd
   const [expanded, setExpanded] = useState(false)
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
+  const submitting = useRef(false)
 
   function closeAdd() { setAdding(false); setDraft('') }
 
-  function handleAddKey(e: KeyboardEvent<HTMLInputElement>) {
+  async function handleAddKey(e: KeyboardEvent<HTMLInputElement>) {
     // Keep keys away from dnd-kit's keyboard sensor so typing never starts a drag.
     e.stopPropagation()
+    // Enter or Escape while an input method is composing confirms or cancels the
+    // candidate; it is not meant for this form. (keyCode 229 covers Safari.)
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Escape') { closeAdd(); return }
     if (e.key !== 'Enter') return
     e.preventDefault()
     const title = draft.trim()
-    if (!title) return
-    onQuickAdd(date, title)
-    setDraft('')
+    if (!title || submitting.current) return
+    submitting.current = true
+    try {
+      // Clear only once the task is accepted, so a failed save keeps the title to retry,
+      // and only if it wasn't edited in the meantime.
+      if (await onQuickAdd(date, title)) setDraft(current => (current.trim() === title ? '' : current))
+    } finally {
+      submitting.current = false
+    }
   }
 
   const overdueCount = isToday ? items.filter(p => p.kind === 'overdue').length : 0

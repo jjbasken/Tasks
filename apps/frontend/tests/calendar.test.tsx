@@ -92,7 +92,7 @@ describe('calendar chip keyboard access', () => {
 
 describe('calendar add from a day', () => {
   const noop = () => {}
-  async function renderDay(date: string, handlers: { quick?: (d: string, t: string) => void; open?: (d: string, t?: string) => void } = {}) {
+  async function renderDay(date: string, handlers: { quick?: (d: string, t: string) => boolean | Promise<boolean>; open?: (d: string, t?: string) => void } = {}) {
     const dom = await setupDom()
     const { createRoot } = await import('react-dom/client')
     const { DndContext } = await import('@dnd-kit/core')
@@ -103,7 +103,7 @@ describe('calendar add from a day', () => {
         <CalendarDay
           date={date} today={toLocalISODate(new Date())} items={[]} isDragging={false}
           onToggle={noop} onClickTask={noop}
-          onQuickAdd={handlers.quick ?? noop} onOpenAdd={handlers.open ?? noop}
+          onQuickAdd={handlers.quick ?? (() => true)} onOpenAdd={handlers.open ?? noop}
         />
       </DndContext>,
     ))
@@ -134,7 +134,7 @@ describe('calendar add from a day', () => {
   it('quick-adds on Enter for today and ignores blank titles', async () => {
     const date = toLocalISODate(new Date())
     const added: [string, string][] = []
-    const { dom, cleanup } = await renderDay(date, { quick: (d, t) => added.push([d, t]) })
+    const { dom, cleanup } = await renderDay(date, { quick: (d, t) => { added.push([d, t]); return true } })
     try {
       const btn = document.querySelector('.cal-add-btn') as HTMLButtonElement
       expect(btn).not.toBeNull()
@@ -149,6 +149,32 @@ describe('calendar add from a day', () => {
       expect((document.querySelector('.cal-quick-input') as HTMLInputElement).value).toBe('')
       await press(dom, input, 'Escape')
       expect(document.querySelector('.cal-quick-input')).toBeNull()
+    } finally { await cleanup() }
+  })
+
+  it('keeps the title when the task could not be saved', async () => {
+    const { dom, cleanup } = await renderDay(toLocalISODate(new Date()), { quick: async () => false })
+    try {
+      await act(async () => (document.querySelector('.cal-add-btn') as HTMLButtonElement).click())
+      const input = document.querySelector('.cal-quick-input') as HTMLInputElement
+      await type(dom, input, 'Buy milk')
+      await press(dom, input, 'Enter')
+      expect((document.querySelector('.cal-quick-input') as HTMLInputElement).value).toBe('Buy milk')
+    } finally { await cleanup() }
+  })
+
+  it('ignores Enter while an input method is composing', async () => {
+    const added: string[] = []
+    const { dom, cleanup } = await renderDay(toLocalISODate(new Date()), { quick: (_d, t) => { added.push(t); return true } })
+    try {
+      await act(async () => (document.querySelector('.cal-add-btn') as HTMLButtonElement).click())
+      const input = document.querySelector('.cal-quick-input') as HTMLInputElement
+      await type(dom, input, 'にほん')
+      await act(async () => { input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })) })
+      expect(added).toEqual([])
+      expect((document.querySelector('.cal-quick-input') as HTMLInputElement).value).toBe('にほん')
+      await press(dom, input, 'Enter')
+      expect(added).toEqual(['にほん'])
     } finally { await cleanup() }
   })
 
@@ -182,6 +208,32 @@ describe('task editor prefill', () => {
       expect(inputs[0].value).toBe('Dentist')
       expect(inputs.find(i => i.type === 'date')!.value).toBe(date)
       expect((document.querySelector('select.field-select') as HTMLSelectElement).value).toBe('later')
+    } finally {
+      await act(async () => root.unmount())
+      dom.window.close()
+    }
+  })
+})
+
+describe('calendar default view toggle', () => {
+  it('is disabled with a reason while unavailable, such as during a pending save', async () => {
+    const dom = await setupDom()
+    const { createRoot } = await import('react-dom/client')
+    const { CalendarView } = await import('../src/components/calendar/CalendarView.js')
+    const root = createRoot(document.getElementById('root')!)
+    const noop = () => {}
+    const render = (reason: string | null) => root.render(
+      <CalendarView tasks={[]} onToggle={noop} onClickTask={noop} onMove={noop} onQuickAdd={() => true} onOpenAdd={noop}
+        isDefault onToggleDefault={noop} defaultDisabledReason={reason} />,
+    )
+    try {
+      await act(async () => render('Saving…'))
+      const box = document.querySelector('.cal-default-toggle input') as HTMLInputElement
+      expect(box.checked).toBe(true)
+      expect(box.disabled).toBe(true)
+      expect(document.querySelector('.cal-default-toggle')!.getAttribute('title')).toBe('Saving…')
+      await act(async () => render(null))
+      expect((document.querySelector('.cal-default-toggle input') as HTMLInputElement).disabled).toBe(false)
     } finally {
       await act(async () => root.unmount())
       dom.window.close()
