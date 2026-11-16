@@ -186,25 +186,41 @@ function anchoredRule(rruleStr: string, anchor: string): DateRule {
   return result
 }
 
+function serialize(opts: Opts): string {
+  const out: Opts = { ...opts }
+  delete out.dtstart
+  return RRule.optionsToString(out).replace(/^RRULE:/, '')
+}
+
 /**
  * The rule to save on the occurrence created by completing a task due `anchor`.
  *
- * Each occurrence anchors the rule at its own due date, so a COUNT copied unchanged
- * would restart on every successor and the series would never end. Instead COUNT is
- * replaced by an UNTIL at the series' actual last occurrence, computed from this
- * anchor, and that end carries forward unchanged. Rules without COUNT, and counts too
- * large to walk, are returned as is.
+ * Each occurrence anchors its rule at its own due date (noon UTC), so a rule copied
+ * unchanged can drift from the series it came from:
+ * - A COUNT would restart on every successor and the series would never end.
+ * - A sub-daily INTERVAL that doesn't divide a day (e.g. HOURLY;INTERVAL=23) lands on
+ *   different times once re-anchored, so a saved cutoff can drop the final date.
+ *
+ * Sub-daily rules therefore save their already-converted date-only form (FREQ=DAILY
+ * with the date filters, ending at the end of the series' last date), which is exactly
+ * what the calendar previews. Daily and coarser rules replace COUNT with an UNTIL at the
+ * series' actual last occurrence; their successors always fall on real occurrences, so
+ * the interval stays aligned. Rules that can't be converted are returned as is.
  */
 export function successorRule(rruleStr: string, anchor: string): string {
   try {
     const orig = RRule.fromString(rruleStr).origOptions
+    if (SUB_DAILY.has(orig.freq as number)) {
+      const { rule, empty, previewable } = anchoredRule(rruleStr, anchor)
+      if (empty || !previewable) return rruleStr
+      return serialize(rule.origOptions)
+    }
     if (orig.count == null) return rruleStr
     const last = lastCountedOccurrence({ ...orig, dtstart: utcNoon(anchor) })
     if (!last) return rruleStr
     const next: Opts = { ...orig, until: last }
     delete next.count
-    delete next.dtstart
-    return RRule.optionsToString(next).replace(/^RRULE:/, '')
+    return serialize(next)
   } catch {
     return rruleStr
   }

@@ -175,6 +175,12 @@ describe('successive completions honor the series end', () => {
     ['FREQ=HOURLY;BYHOUR=9;COUNT=1;UNTIL=20261117T085959Z', ['2026-11-16']],
     ['FREQ=HOURLY;BYHOUR=9;UNTIL=20261117T085959Z', ['2026-11-16']],
     ['FREQ=HOURLY;BYHOUR=9;UNTIL=20261117T090000Z', ['2026-11-16', '2026-11-17']],
+    // Intervals that don't divide a day: re-anchoring each successor must not drop the end.
+    ['FREQ=HOURLY;INTERVAL=23;COUNT=3', ['2026-11-16', '2026-11-17', '2026-11-18']],
+    ['FREQ=HOURLY;INTERVAL=23;UNTIL=20261118T100000Z', ['2026-11-16', '2026-11-17', '2026-11-18']],
+    ['FREQ=HOURLY;INTERVAL=48;COUNT=2', ['2026-11-16', '2026-11-17', '2026-11-18']],
+    ['FREQ=MINUTELY;INTERVAL=1439;COUNT=4', ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19']],
+    ['FREQ=WEEKLY;INTERVAL=2;COUNT=3', ['2026-11-16', '2026-11-30', '2026-12-14']],
   ]
   for (const [rrule, expected] of cases) {
     it(`${rrule} ends after ${expected.length} task(s), matching the first preview`, () => {
@@ -185,7 +191,10 @@ describe('successive completions honor the series end', () => {
   }
 
   it('saves the computed end on the successor instead of restarting COUNT', () => {
-    expect(successorRule('FREQ=HOURLY;COUNT=24', '2026-11-16')).toBe('FREQ=HOURLY;UNTIL=20261117T110000Z')
+    // Sub-daily rules save their date-only form, ending at the end of the last date.
+    expect(successorRule('FREQ=HOURLY;COUNT=24', '2026-11-16')).toBe('FREQ=DAILY;UNTIL=20261117T235959Z')
+    expect(successorRule('FREQ=HOURLY;INTERVAL=23;COUNT=3', '2026-11-16')).toBe('FREQ=DAILY;UNTIL=20261118T235959Z')
+    expect(successorRule('FREQ=MINUTELY;BYDAY=MO', '2026-11-16')).toBe('FREQ=DAILY;BYDAY=MO')
     expect(successorRule('FREQ=DAILY;COUNT=3', '2026-11-16')).toBe('FREQ=DAILY;UNTIL=20261118T120000Z')
     const { rules } = completeSeries('FREQ=DAILY;COUNT=3', '2026-11-16')
     expect(rules.slice(1)).toEqual(['FREQ=DAILY;UNTIL=20261118T120000Z', 'FREQ=DAILY;UNTIL=20261118T120000Z'])
