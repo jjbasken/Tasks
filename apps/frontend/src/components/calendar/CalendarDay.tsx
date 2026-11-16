@@ -16,13 +16,14 @@ type Props = {
   isDragging: boolean
   onToggle: (task: DecryptedTask) => void
   onClickTask: (task: DecryptedTask) => void
+  onQuickAddStart?: () => void
   /** Create a task due on this date with just a title; resolves false if it was not saved. */
   onQuickAdd: (date: string, title: string) => boolean | Promise<boolean>
   /** Open the full new-task editor for this date, carrying any title typed so far. */
   onOpenAdd: (date: string, title?: string) => void
 }
 
-export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekday, isDragging, onToggle, onClickTask, onQuickAdd, onOpenAdd }: Props) {
+export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekday, isDragging, onToggle, onClickTask, onQuickAddStart, onQuickAdd, onOpenAdd }: Props) {
   const isPast = date < today
   const isToday = date === today
   const { setNodeRef, isOver } = useDroppable({ id: date, disabled: isPast })
@@ -82,7 +83,7 @@ export function CalendarDay({ date, today, items, limit, outsideMonth, showWeekd
             className="cal-add-btn"
             aria-label={`Add task on ${d.toDateString()}`}
             title="Add task"
-            onClick={() => setAdding(true)}
+            onClick={() => { onQuickAddStart?.(); setAdding(true) }}
           >+</button>
         )}
       </div>

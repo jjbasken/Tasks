@@ -62,7 +62,7 @@ describe('calendar chip keyboard access', () => {
     const root = createRoot(document.getElementById('root')!)
     try {
       await act(async () => root.render(
-        <CalendarView tasks={[task]} onToggle={() => {}} onClickTask={t => opened.push(t.id)} onMove={() => {}} onQuickAdd={() => {}} onOpenAdd={() => {}} />,
+        <CalendarView tasks={[task]} onToggle={() => {}} onClickTask={t => opened.push(t.id)} onMove={() => {}} onQuickAdd={() => true} onOpenAdd={() => {}} />,
       ))
       const chip = document.querySelector('.cal-chip-active')!
       const titleBtn = chip.querySelector('.cal-chip-title') as HTMLButtonElement
@@ -238,5 +238,132 @@ describe('calendar default view toggle', () => {
       await act(async () => root.unmount())
       dom.window.close()
     }
+  })
+})
+
+describe('calendar preferences on TasksPage', () => {
+  async function withTasksPage(
+    initialView: 'now' | 'calendar',
+    run: (page: {
+      dom: JSDOM
+      mountTasks: (show: boolean) => Promise<void>
+      refreshDefault: (view: 'now' | 'calendar') => Promise<void>
+      finishSave: () => Promise<void>
+    }) => Promise<void>,
+  ) {
+    const dom = await setupDom()
+    const { createRoot } = await import('react-dom/client')
+    const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
+    const { httpLink } = await import('@trpc/client')
+    const { getQueryKey } = await import('@trpc/react-query')
+    const { MemoryRouter } = await import('react-router')
+    const { AuthProvider } = await import('../src/hooks/useAuth.js')
+    const { session } = await import('../src/lib/session.js')
+    const { trpc } = await import('../src/lib/trpc.js')
+    const { TasksPage } = await import('../src/routes/TasksPage.js')
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } })
+    const rows = (defaultView: 'now' | 'calendar') => [
+      { id: 'personal', isPersonal: true, defaultView, encryptedName: '', encryptedListKey: '' },
+    ]
+    const listKey = getQueryKey(trpc.lists.list, undefined, 'query')
+    queryClient.setQueryData(listKey, rows(initialView))
+    const saveRequest = Promise.withResolvers<Response>()
+    const saveStarted = Promise.withResolvers<void>()
+    let savedView = initialView
+    let requestedView = initialView
+    const client = trpc.createClient({
+      links: [httpLink({
+        url: 'http://localhost/trpc',
+        fetch: async (url, options) => {
+          if (String(url).endsWith('/lists.setDefaultView')) {
+            requestedView = JSON.parse(String(options?.body)).view
+            saveStarted.resolve()
+            return saveRequest.promise
+          }
+          return Response.json({ result: { data: rows(savedView) } })
+        },
+      })],
+    })
+    session.setToken('x.e30.x')
+    session.setStretchKey(new Uint8Array(32))
+    session.setPrivateKey('test')
+    session.setPublicKey('test')
+    const root = createRoot(document.getElementById('root')!)
+    const mountTasks = (show: boolean) => act(async () => {
+      root.render(
+        <trpc.Provider client={client} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <MemoryRouter>{show && <TasksPage />}</MemoryRouter>
+            </AuthProvider>
+          </QueryClientProvider>
+        </trpc.Provider>,
+      )
+    })
+    try {
+      await mountTasks(true)
+      await run({
+        dom, mountTasks,
+        refreshDefault: view => act(async () => {
+          queryClient.setQueryData(listKey, rows(view))
+          await new Promise(resolve => setTimeout(resolve, 0))
+        }),
+        finishSave: () => act(async () => {
+          await saveStarted.promise
+          const settled = new Promise<void>(resolve => {
+            const unsubscribe = queryClient.getMutationCache().subscribe(() => {
+              if (queryClient.isMutating() > 0) return
+              unsubscribe()
+              resolve()
+            })
+          })
+          savedView = requestedView
+          saveRequest.resolve(Response.json({ result: { data: { ok: true } } }))
+          await settled
+          await new Promise(resolve => setTimeout(resolve, 0))
+        }),
+      })
+    } finally {
+      await mountTasks(false)
+      await act(async () => root.unmount())
+      queryClient.clear()
+      session.clear()
+      dom.window.close()
+    }
+  }
+
+  it('keeps the calendar draft when the default refreshes to Now', async () => {
+    await withTasksPage('calendar', async ({ dom, refreshDefault }) => {
+      await act(async () => document.querySelector<HTMLButtonElement>('.cal-add-btn')!.click())
+      const input = document.querySelector<HTMLInputElement>('.cal-quick-input')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'Dentist')
+        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+      })
+      await refreshDefault('now')
+      expect(document.querySelector('.tab-btn.active')?.textContent).toBe('Calendar')
+      expect(document.querySelector<HTMLInputElement>('.cal-quick-input')?.value).toBe('Dentist')
+    })
+  })
+
+  it('keeps the default toggle disabled across a remount while the save is pending', async () => {
+    await withTasksPage('calendar', async ({ mountTasks, finishSave }) => {
+      const checkbox = () => document.querySelector<HTMLInputElement>('.cal-default-toggle input')!
+      await act(async () => {
+        checkbox().click()
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+      expect(checkbox().disabled).toBe(true)
+      await mountTasks(false)
+      await mountTasks(true)
+      // The optimistic default is Now, so reopen the Calendar tab.
+      await act(async () => [...document.querySelectorAll<HTMLButtonElement>('.tab-btn')]
+        .find(button => button.textContent === 'Calendar')!.click())
+      expect(checkbox().checked).toBe(false)
+      expect(checkbox().disabled).toBe(true)
+      await finishSave()
+      expect(checkbox().disabled).toBe(false)
+    })
   })
 })

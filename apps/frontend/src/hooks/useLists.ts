@@ -1,3 +1,5 @@
+import { useIsMutating } from '@tanstack/react-query'
+import { getMutationKey } from '@trpc/react-query'
 import { trpc } from '../lib/trpc.js'
 import { useEffect } from 'react'
 import { unwrapListKey, readListName, encryptListName } from '../lib/listCrypto.js'
@@ -89,7 +91,10 @@ export function useLeaveList() {
 
 export function useSetListDefaultView() {
   const utils = trpc.useUtils()
-  return trpc.lists.setDefaultView.useMutation({
+  const mutationKey = getMutationKey(trpc.lists.setDefaultView)
+  // The mutation cache outlives TasksPage, including when the user switches routes.
+  const isPending = useIsMutating({ mutationKey, exact: true }) > 0
+  const mutation = trpc.lists.setDefaultView.useMutation({
     onMutate: async ({ listId, view }) => {
       await utils.lists.list.cancel()
       const previous = utils.lists.list.getData()
@@ -101,4 +106,11 @@ export function useSetListDefaultView() {
     },
     onSettled: () => utils.lists.list.invalidate(),
   })
+
+  function mutate(...args: Parameters<typeof mutation.mutate>) {
+    if (utils.lists.setDefaultView.isMutating() > 0) return
+    mutation.mutate(...args)
+  }
+
+  return { mutate, isPending }
 }

@@ -34,9 +34,8 @@ export function TasksPage() {
   const currentListId = (activeStillExists ? activeListId : personalList?.id) ?? ''
   const currentList = lists?.find(l => l.id === currentListId)
 
-  // Open each list on its saved tab. Until you pick a tab yourself during this visit,
-  // a refreshed preference (e.g. saved on another device, replacing a stale cached
-  // one) still applies; after that, refetches never move you.
+  // Use refreshed defaults until the user chooses a tab or starts a calendar draft.
+  // Preserve their current tab after that for the rest of this list visit.
   const visitListId = useRef<string | null>(null)
   const pickedTabFor = useRef<string | null>(null)
   useEffect(() => {
@@ -232,6 +231,7 @@ export function TasksPage() {
               onToggle={handleToggle}
               onClickTask={openTask}
               onMove={handleMove}
+              onQuickAddStart={() => pickTab('calendar')}
               onQuickAdd={handleQuickAdd}
               onOpenAdd={handleOpenAdd}
               isDefault={currentList?.defaultView === 'calendar'}

@@ -17,6 +17,7 @@ type Props = {
   onClickTask: (task: DecryptedTask) => void
   /** Move a task to a date (YYYY-MM-DD), or null to clear its due date. */
   onMove: (task: DecryptedTask, date: string | null) => void
+  onQuickAddStart?: () => void
   onQuickAdd: (date: string, title: string) => boolean | Promise<boolean>
   onOpenAdd: (date: string, title?: string) => void
   /** Whether this list opens in Calendar by default; the toggle is hidden when omitted. */
@@ -54,7 +55,7 @@ function useToday(): string {
   return today
 }
 
-export function CalendarView({ tasks, onToggle, onClickTask, onMove, onQuickAdd, onOpenAdd, isDefault, onToggleDefault, defaultDisabledReason }: Props) {
+export function CalendarView({ tasks, onToggle, onClickTask, onMove, onQuickAddStart, onQuickAdd, onOpenAdd, isDefault, onToggleDefault, defaultDisabledReason }: Props) {
   const today = useToday()
   const [mode, setModeState] = useState<Mode>(initialMode)
   const [anchor, setAnchor] = useState(today)
@@ -165,6 +166,7 @@ export function CalendarView({ tasks, onToggle, onClickTask, onMove, onQuickAdd,
                 isDragging={!!active}
                 onToggle={onToggle}
                 onClickTask={onClickTask}
+                onQuickAddStart={onQuickAddStart}
                 onQuickAdd={onQuickAdd}
                 onOpenAdd={onOpenAdd}
               />
