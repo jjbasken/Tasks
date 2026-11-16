@@ -96,6 +96,48 @@ describe('sub-daily rules are evaluated per date', () => {
   })
 })
 
+describe('sub-daily rules keep their end condition', () => {
+  it('FREQ=HOURLY;COUNT=1 creates no successor and no previews', () => {
+    const rrule = 'FREQ=HOURLY;COUNT=1'
+    expect(nextOccurrenceDate(rrule, '2026-11-16')).toBeNull()
+    expect(nextDueOnCompletion(rrule, '2026-11-16', '2026-11-16')).toBeNull()
+    expect(occurrencesBetween(rrule, '2026-11-16', '2026-11-17', '2026-11-30')).toEqual([])
+    const { byDate } = placeTasks(
+      [{ id: 't', status: 'active', due_date: '2026-11-16', completed_at: null, rrule }],
+      '2026-11-15', '2026-11-30', '2026-11-16',
+    )
+    expect([...byDate.values()].flat().map(p => p.kind)).toEqual(['active'])
+  })
+  it('converts an unfiltered COUNT to the date of its last occurrence', () => {
+    // 24 hourly occurrences from noon end at 11:00 the next day.
+    expect(occurrencesBetween('FREQ=HOURLY;COUNT=24', '2026-11-16', '2026-11-16', '2026-11-30'))
+      .toEqual(['2026-11-16', '2026-11-17'])
+    expect(nextOccurrenceDate('FREQ=HOURLY;COUNT=24', '2026-11-16')).toBe('2026-11-17')
+    expect(nextOccurrenceDate('FREQ=HOURLY;COUNT=24', '2026-11-16', '2026-11-17')).toBeNull()
+    // 3000 minutes from noon end on Nov 18; INTERVAL scales the span.
+    expect(occurrencesBetween('FREQ=MINUTELY;COUNT=3000', '2026-11-16', '2026-11-17', '2026-11-30'))
+      .toEqual(['2026-11-17', '2026-11-18'])
+    expect(occurrencesBetween('FREQ=HOURLY;INTERVAL=24;COUNT=3', '2026-11-16', '2026-11-17', '2026-11-30'))
+      .toEqual(['2026-11-17', '2026-11-18'])
+  })
+  it('walks a filtered COUNT to find where it ends', () => {
+    // Three 9:00 occurrences after a noon anchor: Nov 17, 18, 19. The anchor date is the
+    // task itself, so it is always in the set (ghosts start after it).
+    expect(occurrencesBetween('FREQ=HOURLY;BYHOUR=9;COUNT=3', '2026-11-16', '2026-11-16', '2026-11-30'))
+      .toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19'])
+    expect(nextOccurrenceDate('FREQ=HOURLY;BYHOUR=9;COUNT=3', '2026-11-16', '2026-11-19')).toBeNull()
+  })
+  it('the earlier of COUNT and UNTIL wins', () => {
+    expect(occurrencesBetween('FREQ=HOURLY;COUNT=100;UNTIL=20261117T235959Z', '2026-11-16', '2026-11-16', '2026-11-30'))
+      .toEqual(['2026-11-16', '2026-11-17'])
+  })
+  it('keeps a filtered rule with a very large COUNT unconverted, without previews', () => {
+    const rrule = 'FREQ=SECONDLY;BYHOUR=9;COUNT=20000'
+    expect(occurrencesBetween(rrule, '2026-11-16', '2026-11-17', '2026-11-30')).toEqual([])
+    expect(nextOccurrenceDate(rrule, '2026-11-16')).toBe('2026-11-17')
+  })
+})
+
 describe('nextDueOnCompletion catch-up', () => {
   it('skips missed occurrences for an overdue task, keeping the rule rhythm', () => {
     expect(nextDueOnCompletion('FREQ=DAILY', '2026-11-14', '2026-11-16')).toBe('2026-11-17')

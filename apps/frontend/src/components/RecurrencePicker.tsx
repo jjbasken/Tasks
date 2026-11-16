@@ -48,7 +48,7 @@ export function RecurrencePicker({ value, onChange }: Props) {
         </div>
         {value && isSubDailyRule(value) && (
           <p className="recur-note" role="note">
-            Tasks have a date but no time, so this repeats on every matching day. Times, intervals and counts are ignored.
+            Tasks have a date but no time, so this repeats on every matching day. Times and intervals are ignored; a count or end date still sets when it stops.
           </p>
         )}
       </div>

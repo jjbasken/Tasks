@@ -55,26 +55,89 @@ export function isSubDailyRule(rruleStr: string): boolean {
   }
 }
 
+const UNIT_MS: Record<number, number> = { [RRule.HOURLY]: 3600000, [RRule.MINUTELY]: 60000, [RRule.SECONDLY]: 1000 }
+
+/** Most occurrences walked to find where a filtered, counted sub-daily rule ends. */
+const MAX_COUNT_WALK = 10_000
+
+type DateRule = {
+  rule: RRule
+  /** False when the rule can't be expressed per date without changing when it stops. */
+  previewable: boolean
+}
+
+const ruleCache = new Map<string, DateRule>()
+
 /**
  * Tasks carry a date but no time, so a rule that repeats within a day is treated as
  * repeating on every day it matches: it becomes FREQ=DAILY with its date filters
  * (BYDAY, BYMONTH, BYMONTHDAY, BYYEARDAY, BYWEEKNO) and UNTIL kept. Time-of-day parts
- * (BYHOUR, BYMINUTE, BYSECOND), INTERVAL, COUNT and BYSETPOS describe positions within
- * the day and are dropped. This keeps every rule's work proportional to days, not
- * seconds, so previews are never cut short by iteration limits.
+ * (BYHOUR, BYMINUTE, BYSECOND), INTERVAL and BYSETPOS describe positions within the
+ * day and are dropped, so work scales with days rather than seconds.
+ *
+ * COUNT is an end condition, so it is kept by converting it to an UNTIL on the date of
+ * the rule's last occurrence from the anchor. `FREQ=HOURLY;COUNT=1` therefore still
+ * ends after its first date. Without filters that date is computed directly. With
+ * filters the occurrences are walked; if more than MAX_COUNT_WALK remain, the rule
+ * keeps its original, unconverted form so it still stops exactly where it did, and
+ * gets no calendar previews.
  */
-function anchoredRule(rruleStr: string, anchor: string): RRule {
+function anchoredRule(rruleStr: string, anchor: string): DateRule {
+  const key = `${anchor}|${rruleStr}`
+  const cached = ruleCache.get(key)
+  if (cached) return cached
+
   const opts = { ...RRule.fromString(rruleStr).origOptions, dtstart: utcNoon(anchor) }
+  let result: DateRule = { rule: new RRule(opts), previewable: true }
+
   if (SUB_DAILY.has(opts.freq as number)) {
-    opts.freq = RRule.DAILY
-    delete opts.interval
-    delete opts.count
-    delete opts.byhour
-    delete opts.byminute
-    delete opts.bysecond
-    delete opts.bysetpos
+    let until = opts.until ?? null
+    let convertible = true
+    if (opts.count != null) {
+      const last = lastCountedOccurrence(opts)
+      if (last === undefined) convertible = false
+      else if (last && (!until || last < until)) until = last
+    }
+    if (convertible) {
+      const daily = { ...opts, freq: RRule.DAILY }
+      delete daily.interval
+      delete daily.count
+      delete daily.byhour
+      delete daily.byminute
+      delete daily.bysecond
+      delete daily.bysetpos
+      // Close UNTIL at the end of its UTC day so that date's noon occurrence is kept.
+      if (until) daily.until = new Date(Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), until.getUTCDate(), 23, 59, 59))
+      result = { rule: new RRule(daily), previewable: true }
+    } else {
+      result = { rule: result.rule, previewable: false }
+    }
   }
-  return new RRule(opts)
+
+  if (ruleCache.size > 500) ruleCache.clear()
+  ruleCache.set(key, result)
+  return result
+}
+
+/**
+ * The time of the last occurrence of a counted sub-daily rule, null if it has none,
+ * or undefined when finding it would mean walking more than MAX_COUNT_WALK occurrences.
+ */
+function lastCountedOccurrence(opts: Partial<typeof RRule.prototype.origOptions>): Date | null | undefined {
+  const count = opts.count as number
+  if (count <= 0) return null
+  const filtered = [opts.byhour, opts.byminute, opts.bysecond, opts.byweekday, opts.bymonth,
+    opts.bymonthday, opts.byyearday, opts.byweekno, opts.bysetpos, opts.byeaster]
+    .some(v => v != null && !(Array.isArray(v) && v.length === 0))
+  if (!filtered) {
+    // Evenly spaced: dtstart + (count - 1) steps.
+    const step = (opts.interval ?? 1) * UNIT_MS[opts.freq as number]
+    const last = new Date(opts.dtstart!.getTime() + (count - 1) * step)
+    return opts.until && last > opts.until ? opts.until : last
+  }
+  if (count > MAX_COUNT_WALK) return undefined
+  const all = new RRule(opts).all()
+  return all.length ? all[all.length - 1] : null
 }
 
 /**
@@ -85,7 +148,7 @@ function anchoredRule(rruleStr: string, anchor: string): RRule {
  */
 export function nextOccurrenceDate(rruleStr: string, anchor: string, after: string = anchor): string | null {
   try {
-    const rule = anchoredRule(rruleStr, anchor)
+    const { rule } = anchoredRule(rruleStr, anchor)
     // Start the search at the end of `after` so same-day occurrences are skipped.
     const next = rule.after(new Date(utcNoon(after).getTime() + 12 * 3600000 - 1), false)
     return next ? toUTCDate(next) : null
@@ -100,7 +163,8 @@ export function nextOccurrenceDate(rruleStr: string, anchor: string, after: stri
  */
 export function occurrencesBetween(rruleStr: string, anchor: string, start: string, end: string, max = 64): string[] {
   try {
-    const rule = anchoredRule(rruleStr, anchor)
+    const { rule, previewable } = anchoredRule(rruleStr, anchor)
+    if (!previewable) return []
     const startD = new Date(utcNoon(start).getTime() - 12 * 3600000)
     const endD = new Date(utcNoon(end).getTime() + 12 * 3600000 - 1)
     const out: string[] = []
