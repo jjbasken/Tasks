@@ -27,6 +27,7 @@ A self-hosted, end-to-end encrypted task manager and notes app for families. Tas
 ## Features
 
 - **Now / Later / Done buckets** — manual prioritization, no due-date pressure
+- **Calendar view** — month/week calendar with drag-and-drop rescheduling, an unscheduled tray, recurring-task previews, and overdue tasks carried forward to today with a days-late badge
 - **Recurring tasks** — full iCal RRULE support (daily, weekly, monthly, custom patterns)
 - **Shared lists** — invite family members; list key is re-encrypted per member
 - **E2E encryption** — passphrase never leaves your device; server stores only ciphertext

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { RRule } from 'rrule'
+import { isSubDailyRule } from '@tasks/shared'
 
 type Props = { value: string | null; onChange: (rrule: string | null) => void }
 
@@ -45,6 +46,11 @@ export function RecurrencePicker({ value, onChange }: Props) {
           />
           <button type="button" className="recur-apply-btn" onClick={applyCustom}>Apply</button>
         </div>
+        {value && isSubDailyRule(value) && (
+          <p className="recur-note" role="note">
+            Tasks have a date but no time, so this repeats on every matching day. Times and intervals are ignored; a count or end date still sets when it stops.
+          </p>
+        )}
       </div>
     </div>
   )

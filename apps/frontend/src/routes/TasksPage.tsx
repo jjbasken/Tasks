@@ -3,14 +3,15 @@ import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
+import { CalendarView } from '../components/calendar/CalendarView.js'
 import { useListsList } from '../hooks/useLists.js'
 import { useTaskList, useUpdateTask, useCreateTask, useClearDone, useDeleteTask, type DecryptedTask } from '../hooks/useTasks.js'
 import type { TaskPayload } from '@tasks/shared'
-import { nextOccurrence } from '@tasks/shared'
+import { nextDueOnCompletion, successorRule, toLocalISODate, bucketForDueDate } from '@tasks/shared'
 import { resolveListKey } from '../lib/listKeys.js'
 import { spawnedOccurrences } from '../lib/recurrence.js'
 
-type Tab = 'now' | 'later' | 'done'
+type Tab = 'now' | 'later' | 'done' | 'calendar'
 
 export function TasksPage() {
   const [actionError, setActionError] = useState<string | null>(null)
@@ -46,7 +47,7 @@ export function TasksPage() {
     if (!listKeyB64) return
     const in7Days = new Date()
     in7Days.setDate(in7Days.getDate() + 7)
-    const cutoff = in7Days.toISOString().split('T')[0]
+    const cutoff = toLocalISODate(in7Days)
     const toPromote = tasks.filter(t => t.status === 'active' && t.bucket === 'later' && !!t.due_date && t.due_date <= cutoff)
     toPromote.forEach(task => {
       updateTask.mutateAsync(task.id, { ...task, bucket: 'now' }, listKeyB64)
@@ -62,13 +63,14 @@ export function TasksPage() {
       const updated: TaskPayload = { ...task, status: isDone ? 'done' : 'active', completed_at: isDone ? new Date().toISOString() : null }
       await updateTask.mutateAsync(task.id, updated, listKeyB64)
       if (isDone && task.rrule) {
-        const anchor = task.due_date ? new Date(task.due_date + 'T12:00:00') : new Date()
-        const next = nextOccurrence(task.rrule, anchor)
+        // Skips missed occurrences, matching the first ghost the calendar previews.
+        const today = toLocalISODate(new Date())
+        const next = nextDueOnCompletion(task.rrule, task.due_date, today)
         if (next) {
-          const in7Days = new Date()
-          in7Days.setDate(in7Days.getDate() + 7)
-          const bucket = next > in7Days ? 'later' : 'now'
-          const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule: task.rrule, status: 'active', completed_at: null, due_date: next.toISOString().split('T')[0], bucket }
+          const bucket = bucketForDueDate(next, today)
+          // Carry the series' end forward so a COUNT doesn't restart on every occurrence.
+          const rrule = successorRule(task.rrule, task.due_date ?? today)
+          const nextPayload: TaskPayload = { spawned_by: task.id, title: task.title, notes: task.notes, rrule, status: 'active', completed_at: null, due_date: next, bucket }
           await createTask.mutateAsync(nextPayload, listKeyB64)
         }
       } else if (!isDone && task.rrule) {
@@ -82,6 +84,24 @@ export function TasksPage() {
       setActionError(error instanceof Error ? error.message : 'Could not update task')
     } finally {
       setCompletingIds(prev => { const s = new Set(prev); s.delete(task.id); return s })
+    }
+  }
+
+  // Open the editor scoped to the list the task belongs to, so switching lists while
+  // it is open never saves against another list's key.
+  function openTask(task: DecryptedTask) {
+    setEditorListId(currentListId)
+    setSelectedTask(task)
+    setShowCreate(false)
+  }
+
+  async function handleMove(task: DecryptedTask, date: string | null) {
+    if (!listKeyB64) return
+    const bucket = date ? bucketForDueDate(date, toLocalISODate(new Date())) : task.bucket
+    try {
+      await updateTask.mutateAsync(task.id, { ...task, due_date: date, bucket }, listKeyB64)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not move task')
     }
   }
 
@@ -111,7 +131,7 @@ export function TasksPage() {
       <Sidebar activeListId={currentListId} onSelectList={setActiveListId} />
       <div className="main-content">
         <div className="main-header">
-          {(['now', 'later', 'done'] as Tab[]).map(t => (
+          {(['now', 'later', 'done', 'calendar'] as Tab[]).map(t => (
             <button
               key={t}
               className={`tab-btn${tab === t ? ' active' : ''}`}
@@ -147,9 +167,15 @@ export function TasksPage() {
           )}
         </div>
         {actionError && <div className="form-error" role="alert">{actionError}</div>}
-        <div className="task-list-area">
-          <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={task => { setEditorListId(currentListId); setSelectedTask(task); setShowCreate(false) }} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
-        </div>
+        {tab === 'calendar' ? (
+          <div className="task-list-area cal-area">
+            <CalendarView tasks={tasks} onToggle={handleToggle} onClickTask={openTask} onMove={handleMove} />
+          </div>
+        ) : (
+          <div className="task-list-area">
+            <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={openTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
+          </div>
+        )}
       </div>
       {editorListId === currentListId && (selectedTask || showCreate) && (
         <TaskDetail
