@@ -12,15 +12,17 @@ type Props = {
   /** Prefill for a new task (ignored when editing), e.g. the calendar day it was added from. */
   initialDueDate?: string
   initialTitle?: string
+  /** Bucket for a new undated task, e.g. the list tab it was started from. */
+  initialBucket?: 'now' | 'later'
 }
 
-export function TaskDetail({ task, listId, listKeyB64, onClose, initialDueDate, initialTitle }: Props) {
+export function TaskDetail({ task, listId, listKeyB64, onClose, initialDueDate, initialTitle, initialBucket }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [title, setTitle] = useState(task?.title ?? initialTitle ?? '')
   const [notes, setNotes] = useState(task?.notes ?? '')
   const [bucket, setBucket] = useState<'now' | 'later'>(() =>
-    task?.bucket ?? (initialDueDate ? bucketForDueDate(initialDueDate, toLocalISODate(new Date())) : 'now'))
+    task?.bucket ?? (initialDueDate ? bucketForDueDate(initialDueDate, toLocalISODate(new Date())) : initialBucket ?? 'now'))
   const [rrule, setRrule] = useState<string | null>(task?.rrule ?? null)
   const [dueDate, setDueDate] = useState(task?.due_date ?? initialDueDate ?? '')
 
