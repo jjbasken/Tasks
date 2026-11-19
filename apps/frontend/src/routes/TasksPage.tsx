@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { Sidebar } from '../components/Sidebar.js'
 import { TaskList } from '../components/TaskList.js'
 import { TaskDetail } from '../components/TaskDetail.js'
+import { QuickAddTask } from '../components/QuickAddTask.js'
 import { CalendarView } from '../components/calendar/CalendarView.js'
 import { useListsList, useSetListDefaultView } from '../hooks/useLists.js'
 import { useNetworkStatus } from '../hooks/useNetworkStatus.js'
@@ -21,7 +22,10 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<DecryptedTask | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   // `seq` gives each "More…" its own editor instance, so a new title replaces an open draft for the same day.
-  const [createDefaults, setCreateDefaults] = useState<{ dueDate: string; title?: string; seq: number } | null>(null)
+  const [createDefaults, setCreateDefaults] = useState<{ dueDate?: string; title?: string; bucket?: 'now' | 'later'; seq: number } | null>(null)
+  const quickAddRef = useRef<HTMLInputElement>(null)
+  // Bumped by the "n" shortcut; focusing waits for the list tab to render.
+  const [quickAddFocus, setQuickAddFocus] = useState(0)
   const isOnline = useNetworkStatus()
   const setDefaultView = useSetListDefaultView()
   const { data: lists } = useListsList()
@@ -53,6 +57,34 @@ export function TasksPage() {
     pickedTabFor.current = currentListId
     setTab(t)
   }
+
+  // "n" jumps into quick-add from anywhere on the page that isn't already taking text.
+  useEffect(() => {
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key !== 'n' && e.key !== 'N') return
+      if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return
+      e.preventDefault()
+      setQuickAddFocus(n => n + 1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const focusPending = useRef(false)
+  useEffect(() => {
+    if (quickAddFocus) focusPending.current = true
+  }, [quickAddFocus])
+  useEffect(() => {
+    if (!focusPending.current) return
+    if (tab === 'now' || tab === 'later') {
+      focusPending.current = false
+      quickAddRef.current?.focus()
+    } else {
+      pickTab('now')
+    }
+  }, [quickAddFocus, tab])
 
   const listKeyB64 = useMemo(() => {
     if (!currentList) return null
@@ -144,10 +176,24 @@ export function TasksPage() {
     }
   }
 
-  function handleOpenAdd(date: string, title?: string) {
+  /** Quick-add from the Now/Later list: dated tasks go where their date puts them, others stay in view. */
+  async function handleListQuickAdd(title: string, dueDate: string | null): Promise<'now' | 'later' | null> {
+    if (!listKeyB64 || (tab !== 'now' && tab !== 'later')) return null
+    const bucket = dueDate ? bucketForDueDate(dueDate, toLocalISODate(new Date())) : tab
+    const payload: TaskPayload = { title, notes: null, rrule: null, status: 'active', completed_at: null, due_date: dueDate, bucket }
+    try {
+      await createTask.mutateAsync(payload, listKeyB64)
+      return bucket
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not add task')
+      return null
+    }
+  }
+
+  function handleOpenAdd(date?: string, title?: string, bucket?: 'now' | 'later') {
     setSelectedTask(null)
     setEditorListId(currentListId)
-    setCreateDefaults(prev => ({ dueDate: date, title, seq: (prev?.seq ?? 0) + 1 }))
+    setCreateDefaults(prev => ({ dueDate: date, title, bucket, seq: (prev?.seq ?? 0) + 1 }))
     setShowCreate(true)
   }
 
@@ -197,7 +243,7 @@ export function TasksPage() {
             </button>
           ))}
           {tab !== 'done' && (
-            <button className="add-task-btn" onClick={() => { setSelectedTask(null); setCreateDefaults(null); setEditorListId(currentListId); setShowCreate(true) }}>
+            <button className="add-task-btn" onClick={() => handleOpenAdd(undefined, undefined, tab === 'later' ? 'later' : undefined)}>
               + Add task
             </button>
           )}
@@ -242,16 +288,27 @@ export function TasksPage() {
           </div>
         ) : (
           <div className="task-list-area">
+            {tab !== 'done' && (
+              <QuickAddTask
+                // Remount per list and tab so a draft can't be submitted somewhere other than where it was typed.
+                key={`${currentListId}:${tab}`}
+                bucket={tab}
+                inputRef={quickAddRef}
+                onAdd={handleListQuickAdd}
+                onOpenAdd={(title, dueDate) => handleOpenAdd(dueDate, title, tab)}
+              />
+            )}
             <TaskList tasks={tasks} bucket={tab} onToggle={handleToggle} onClickTask={openTask} onDeleteTask={handleDeleteTask} completingIds={completingIds} />
           </div>
         )}
       </div>
       {editorListId === currentListId && (selectedTask || showCreate) && (
         <TaskDetail
-          key={`${currentListId}:${selectedTask?.id ?? `new:${createDefaults ? `${createDefaults.dueDate}:${createDefaults.seq}` : ''}`}`}
+          key={`${currentListId}:${selectedTask?.id ?? `new:${createDefaults ? `${createDefaults.dueDate ?? ''}:${createDefaults.seq}` : ''}`}`}
           task={selectedTask ?? null}
           initialDueDate={selectedTask ? undefined : createDefaults?.dueDate}
           initialTitle={selectedTask ? undefined : createDefaults?.title}
+          initialBucket={selectedTask ? undefined : createDefaults?.bucket}
           listId={currentListId}
           listKeyB64={listKeyB64 ?? ''}
           onClose={() => { setSelectedTask(null); setShowCreate(false); setCreateDefaults(null) }}
