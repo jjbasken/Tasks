@@ -585,10 +585,10 @@ body {
 .quick-add-status {
   font-size: 12px;
   color: var(--text-subtle);
-  padding: 4px 12px 0;
-  min-height: 0;
+  padding: 0 12px;
 }
-.quick-add-status:empty { display: none; }
+/* Stay rendered while empty: screen readers can miss live regions that appear with their content. */
+.quick-add-status:not(:empty) { padding-top: 4px; }
 
 /* ─── TASK ROW ───────────────────────────────────────── */
 .task-row {

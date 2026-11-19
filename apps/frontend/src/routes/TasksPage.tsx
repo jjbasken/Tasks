@@ -243,7 +243,7 @@ export function TasksPage() {
             </button>
           ))}
           {tab !== 'done' && (
-            <button className="add-task-btn" onClick={() => { setSelectedTask(null); setCreateDefaults(null); setEditorListId(currentListId); setShowCreate(true) }}>
+            <button className="add-task-btn" onClick={() => handleOpenAdd(undefined, undefined, tab === 'later' ? 'later' : undefined)}>
               + Add task
             </button>
           )}

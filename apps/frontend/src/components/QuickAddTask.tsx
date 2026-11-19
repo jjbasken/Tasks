@@ -13,7 +13,7 @@ type Props = {
   onOpenAdd: (title?: string, dueDate?: string) => void
 }
 
-export function formatDue(iso: string, today: string): string {
+function formatDue(iso: string, today: string): string {
   if (iso === today) return 'Today'
   if (iso === addDays(today, 1)) return 'Tomorrow'
   const d = parseISODate(iso)
